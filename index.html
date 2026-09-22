@@ -1,0 +1,56 @@
+<!doctype html>
+<html lang="es">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="robots" content="noindex, nofollow">
+  <title>Panel Búfala Tech</title>
+  <link rel="stylesheet" href="css/panel.css?v=1">
+  <script type="module" src="js/app.js?v=1"></script>
+</head>
+<body>
+  <header class="cabecera">
+    <div class="marca">Búfala Tech <span>· Panel de administración</span></div>
+    <nav class="menu" id="menu" aria-label="Secciones">
+      <a href="#unidades" data-vista="unidades">Unidades</a>
+      <a href="#combustible" data-vista="combustible">Combustible</a>
+      <a href="#costes" data-vista="costes">Costes de personal</a>
+      <a href="#maestros" data-vista="maestros">Técnicos y vehículos</a>
+      <a href="#liquidacion" data-vista="liquidacion">Liquidación</a>
+    </nav>
+    <button type="button" class="boton secundario" id="salir" hidden>Cerrar sesión</button>
+  </header>
+
+  <div id="franja" class="franja" role="status" hidden></div>
+
+  <main id="vista" class="vista" tabindex="-1">
+    <p class="cargando">Cargando…</p>
+  </main>
+
+  <div id="avisos" class="avisos" aria-live="polite"></div>
+
+  <!-- Pantalla de acceso: es una capa encima de la vista, así no se pierde lo que haya a medias -->
+  <div id="acceso" class="acceso" hidden>
+    <form id="form-acceso" class="tarjeta acceso-caja" autocomplete="off">
+      <h1>Acceso al panel</h1>
+      <p id="acceso-motivo" class="tenue">Introduce la contraseña del panel.</p>
+      <label>Contraseña
+        <input type="password" id="clave" required autocomplete="current-password">
+      </label>
+      <p id="acceso-error" class="error" hidden></p>
+      <button type="submit" class="boton">Entrar</button>
+    </form>
+  </div>
+
+  <dialog id="dialogo" class="dialogo">
+    <form method="dialog">
+      <h2 id="dialogo-titulo"></h2>
+      <div id="dialogo-cuerpo"></div>
+      <div class="acciones">
+        <button value="no" class="boton secundario" id="dialogo-no">Cancelar</button>
+        <button value="si" class="boton" id="dialogo-si">Aceptar</button>
+      </div>
+    </form>
+  </dialog>
+</body>
+</html>

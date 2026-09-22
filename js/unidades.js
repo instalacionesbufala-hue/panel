@@ -1,0 +1,355 @@
+// Pantalla de unidades: formar unidades arrastrando técnicos y vehículos.
+import * as api from './api.js';
+import { esc, fecha, hoy, vigente, avisar, preguntar, cajaError, listaAvisos } from './ui.js';
+
+const LIBRE = '__libre__';
+
+export function montar(el) {
+  let cfg = null;
+  let dia = hoy();
+  let base = null;       // composición del servidor en `dia`: Map idUnidad → { tecs: [], mat }
+  let borrador = null;   // copia editable
+  let errorCarga = null;
+  let errorGuardado = null;
+  let guardando = false;
+  let arrastre = null;   // { tipo: 'tec'|'veh', id }
+
+  const soloLectura = () => dia < hoy();
+
+  // ── Datos ──
+  // conservar: si hay cambios sin guardar, se mantienen aunque se vuelva a leer del servidor
+  async function recargar(conservar = true) {
+    errorCarga = null;
+    try {
+      const habiaCambios = conservar && cfg && borrador && !soloLectura() && cambios().length > 0;
+      cfg = await api.leerConfig();
+      if (habiaCambios) base = composicion();
+      else recalcular();
+    } catch (e) {
+      errorCarga = e;
+    }
+    pintar();
+  }
+
+  function unidadesVisibles() {
+    const conAsignacion = new Set(cfg.asignaciones.filter(a => vigente(a.desde, a.hasta, dia)).map(a => a.idUnidad));
+    return cfg.unidades.filter(u => soloLectura() ? (u.activa || conAsignacion.has(u.id)) : u.activa !== false);
+  }
+  const tecnicosVisibles = () => cfg.tecnicos.filter(t => vigente(t.alta, t.baja, dia));
+  const vehiculosVisibles = () => cfg.vehiculos.filter(v => vigente(v.desde, v.hasta, dia));
+
+  function composicion() {
+    const comp = new Map(unidadesVisibles().map(u => [u.id, { tecs: [], mat: null, choques: [] }]));
+    for (const a of cfg.asignaciones) {
+      if (!vigente(a.desde, a.hasta, dia) || !comp.has(a.idUnidad)) continue;
+      const c = comp.get(a.idUnidad);
+      if (a.idTec && !c.tecs.includes(a.idTec)) c.tecs.push(a.idTec);
+      if (a.matricula) {
+        if (c.mat && c.mat !== a.matricula) c.choques.push(`dos vehículos a la vez (${c.mat} y ${a.matricula})`);
+        c.mat = c.mat || a.matricula;
+      }
+    }
+    return comp;
+  }
+
+  function recalcular() {
+    base = composicion();
+    borrador = new Map([...base].map(([k, v]) => [k, { tecs: [...v.tecs], mat: v.mat, choques: v.choques }]));
+    errorGuardado = null;
+  }
+
+  const unidadDeTec = (comp, id) => { for (const [u, c] of comp) if (c.tecs.includes(id)) return u; return null; };
+  const unidadDeVeh = (comp, mat) => { for (const [u, c] of comp) if (c.mat === mat) return u; return null; };
+  const nombreUnidad = id => cfg.unidades.find(u => u.id === id)?.nombre || id;
+  const tec = id => cfg.tecnicos.find(t => t.id === id);
+  const veh = m => cfg.vehiculos.find(v => v.matricula === m);
+
+  function cambios() {
+    const filas = [];
+    const ids = new Set([...[...base.values()].flatMap(c => c.tecs), ...[...borrador.values()].flatMap(c => c.tecs)]);
+    for (const id of ids) {
+      const antes = unidadDeTec(base, id), despues = unidadDeTec(borrador, id);
+      const matAntes = antes ? base.get(antes).mat : null;
+      const matDespues = despues ? borrador.get(despues).mat : null;
+      if (antes !== despues || matAntes !== matDespues) {
+        filas.push({ idTec: id, idUnidad: despues, matricula: despues ? matDespues : null, desde: dia, hasta: null });
+      }
+    }
+    // Unidades que quedan sin técnicos: el vehículo se asigna (o se retira) a la unidad sola
+    for (const [u, c] of borrador) {
+      const b = base.get(u) || { tecs: [], mat: null };
+      if (c.tecs.length) continue;
+      if (c.mat && (b.mat !== c.mat || b.tecs.length)) filas.push({ idTec: null, idUnidad: u, matricula: c.mat, desde: dia, hasta: null });
+      if (!c.mat && b.mat && !b.tecs.length) filas.push({ idTec: null, idUnidad: u, matricula: null, desde: dia, hasta: null });
+    }
+    return filas;
+  }
+  const unidadCambiada = u => {
+    const a = base.get(u), b = borrador.get(u);
+    if (!a) return true;
+    return a.mat !== b.mat || a.tecs.length !== b.tecs.length || a.tecs.some(t => !b.tecs.includes(t));
+  };
+
+  // ── Validación al soltar ──
+  function avisosFuturos(idTec, destino) {
+    return cfg.asignaciones
+      .filter(a => a.idTec === idTec && a.desde > dia && a.idUnidad && a.idUnidad !== destino)
+      .map(a => `Tiene programada una asignación a «${esc(nombreUnidad(a.idUnidad))}» desde el ${fecha(a.desde)}.`);
+  }
+
+  function rechazo(destino) {
+    const sel = destino === LIBRE ? '.columna[data-libre]' : `.hueco[data-unidad="${CSS.escape(destino)}"]`;
+    el.querySelectorAll(sel).forEach(n => { n.classList.add('rechazo'); setTimeout(() => n.classList.remove('rechazo'), 900); });
+  }
+
+  async function soltar(tipo, id, destino) {
+    if (soloLectura()) return;
+    if (tipo === 'tec') {
+      const origen = unidadDeTec(borrador, id);
+      if (origen === destino || (!origen && destino === LIBRE)) return;
+      const t = tec(id);
+      if (destino !== LIBRE) {
+        const limite = cfg.limites?.tecnicosPorUnidad;   // solo si el backend lo define
+        if (limite && borrador.get(destino).tecs.length >= limite) {
+          rechazo(destino);
+          avisar(`«${nombreUnidad(destino)}» ya tiene ${limite} técnico${limite === 1 ? '' : 's'}, el máximo que admite el servidor.`, 'error');
+          return;
+        }
+        const extras = avisosFuturos(id, destino);
+        if (origen) {
+          // Un técnico no puede estar en dos unidades el mismo día: se avisa aquí, al soltar
+          rechazo(destino);
+          const ok = await preguntar('Técnico ya asignado',
+            `<p><strong>${esc(t?.nombre || id)}</strong> ya está en <strong>«${esc(nombreUnidad(origen))}»</strong> el ${fecha(dia)}. Un técnico no puede estar en dos unidades a la vez.</p>
+             <p>¿Quieres sacarlo de «${esc(nombreUnidad(origen))}» y pasarlo a «${esc(nombreUnidad(destino))}» desde el ${fecha(dia)}?</p>
+             ${extras.map(x => `<p class="caja-aviso">${x}</p>`).join('')}`,
+            { aceptar: 'Sí, moverlo', cancelar: 'No, dejarlo donde está' });
+          if (!ok) return;
+        } else if (extras.length) {
+          const ok = await preguntar('Asignación programada', extras.map(x => `<p>${x}</p>`).join('') + '<p>¿Asignarlo igualmente?</p>', { aceptar: 'Asignar' });
+          if (!ok) return;
+        }
+      }
+      if (origen) borrador.get(origen).tecs = borrador.get(origen).tecs.filter(x => x !== id);
+      if (destino !== LIBRE) borrador.get(destino).tecs.push(id);
+    } else {
+      const origen = unidadDeVeh(borrador, id);
+      if (origen === destino || (!origen && destino === LIBRE)) return;
+      if (destino !== LIBRE) {
+        if (origen) {
+          rechazo(destino);
+          const ok = await preguntar('Vehículo ya asignado',
+            `<p>El vehículo <strong>${esc(id)}</strong> ya está en <strong>«${esc(nombreUnidad(origen))}»</strong> el ${fecha(dia)}.</p>
+             <p>¿Pasarlo a «${esc(nombreUnidad(destino))}»? «${esc(nombreUnidad(origen))}» se quedará sin vehículo.</p>`,
+            { aceptar: 'Sí, moverlo', cancelar: 'No' });
+          if (!ok) return;
+        }
+        const anterior = borrador.get(destino).mat;
+        if (anterior) avisar(`${anterior} vuelve a «vehículos sin asignar».`, 'info');
+        borrador.get(destino).mat = id;
+      }
+      if (origen) borrador.get(origen).mat = null;
+    }
+    errorGuardado = null;
+    pintar();
+  }
+
+  async function guardar() {
+    const filas = cambios();
+    if (!filas.length) return;
+    guardando = true;
+    errorGuardado = null;
+    pintar();
+    try {
+      const r = await api.guardarConfig({ asignaciones: filas });
+      listaAvisos(r.avisos);
+      avisar(`Composición guardada con efecto desde el ${fecha(dia)}.`, 'info');
+      guardando = false;
+      await recargar(false);
+      return;
+    } catch (e) {
+      // El backend es la autoridad: si rechaza, el borrador se queda como estaba
+      errorGuardado = e;
+    }
+    guardando = false;
+    pintar();
+  }
+
+  // ── Pintado ──
+  function fichaTec(id) {
+    const t = tec(id) || { id, nombre: id };
+    return `<div class="ficha tecnico" ${soloLectura() ? '' : 'draggable="true"'} data-tipo="tec" data-id="${esc(id)}">
+      <span class="nombre">${esc(t.nombre)}</span>
+      <span class="detalle">${esc(t.id)}${t.grupo ? ' · grupo ' + esc(t.grupo) : ''}</span>
+      ${selectorMover('tec', id, unidadDeTec(borrador, id))}
+    </div>`;
+  }
+  function fichaVeh(mat) {
+    const v = veh(mat) || { matricula: mat };
+    return `<div class="ficha vehiculo" ${soloLectura() ? '' : 'draggable="true"'} data-tipo="veh" data-id="${esc(mat)}">
+      <span class="nombre">${esc(v.matricula)}</span>
+      <span class="detalle">${esc(v.modelo || '')}</span>
+      ${selectorMover('veh', mat, unidadDeVeh(borrador, mat))}
+    </div>`;
+  }
+  // Camino alternativo al arrastre (pantallas táctiles)
+  function selectorMover(tipo, id, actual) {
+    if (soloLectura()) return '';
+    const opciones = [[LIBRE, 'Sin asignar'], ...[...borrador.keys()].map(u => [u, nombreUnidad(u)])];
+    return `<select class="mover" data-tipo="${tipo}" data-id="${esc(id)}" aria-label="Mover ${esc(id)} a">
+      ${opciones.map(([v, n]) => `<option value="${esc(v)}" ${v === (actual || LIBRE) ? 'selected' : ''}>${v === (actual || LIBRE) ? '' : '→ '}${esc(n)}</option>`).join('')}
+    </select>`;
+  }
+
+  function pintar() {
+    if (errorCarga && !cfg) {
+      el.innerHTML = `<h1>Unidades</h1>${cajaError(errorCarga, 'No se ha podido cargar la configuración')}
+        <button class="boton" data-accion="recargar">Reintentar</button>`;
+      return;
+    }
+    if (!cfg) return;
+    const lectura = soloLectura();
+    const filas = lectura ? [] : cambios();
+    const asignadosTec = new Set([...borrador.values()].flatMap(c => c.tecs));
+    const asignadosVeh = new Set([...borrador.values()].map(c => c.mat).filter(Boolean));
+    const libresTec = tecnicosVisibles().filter(t => !asignadosTec.has(t.id));
+    const libresVeh = vehiculosVisibles().filter(v => !asignadosVeh.has(v.matricula));
+
+    el.innerHTML = `
+      <div class="barra">
+        <div><h1>Unidades</h1><p class="tenue">Arrastra técnicos y un vehículo a cada unidad, o usa el desplegable de cada ficha.</p></div>
+        <label class="empuje">Composición del día<input type="date" id="dia" value="${esc(dia)}"></label>
+        <button class="boton secundario" data-accion="hoy" ${dia === hoy() ? 'disabled' : ''}>Hoy</button>
+      </div>
+      ${errorCarga ? cajaError(errorCarga, 'No se ha podido actualizar') : ''}
+      ${lectura
+        ? `<div class="caja-aviso"><strong>Consulta del ${fecha(dia)} · solo lectura.</strong> Así estaban formadas las unidades ese día. Para cambiar la composición vuelve a hoy o a una fecha futura.</div>`
+        : `<div class="tarjeta bloque barra" style="align-items:center;margin-bottom:1rem">
+             <span>${filas.length
+               ? `<strong>${filas.length} cambio${filas.length === 1 ? '' : 's'} sin guardar.</strong> Se aplicarán con efecto desde el <strong>${fecha(dia)}</strong>; la asignación anterior se cierra el día antes y queda en el histórico.`
+               : `Sin cambios. Fecha de efecto de lo que cambies: <strong>${fecha(dia)}</strong> (se cambia con el selector de día).`}</span>
+             <span class="empuje"></span>
+             <button class="boton secundario" data-accion="descartar" ${filas.length && !guardando ? '' : 'disabled'}>Descartar</button>
+             <button class="boton" data-accion="guardar" ${filas.length && !guardando ? '' : 'disabled'}>${guardando ? 'Guardando…' : 'Guardar composición'}</button>
+           </div>`}
+      ${errorGuardado ? cajaError(errorGuardado, 'El servidor no ha aceptado el cambio') : ''}
+      <div class="tablero ${lectura ? 'solo-lectura' : ''}">
+        <section class="columna" data-libre="tec" aria-label="Técnicos sin asignar">
+          <h2>Técnicos sin asignar <span class="insignia">${libresTec.length}</span></h2>
+          <div class="lista-fichas">${libresTec.map(t => fichaTec(t.id)).join('') || '<p class="vacio">Todos los técnicos están en alguna unidad.</p>'}</div>
+        </section>
+        <section class="col-unidades" aria-label="Unidades">
+          <div class="unidades">
+            ${[...borrador].map(([u, c]) => `
+              <article class="unidad ${!lectura && unidadCambiada(u) ? 'cambiada' : ''}">
+                <header><h3>${esc(nombreUnidad(u))}</h3>
+                  <span class="insignia">${c.tecs.length === 0 ? 'sin técnicos' : c.tecs.length === 1 ? '1 técnico' : c.tecs.length + ' técnicos'}</span></header>
+                ${c.choques.length ? `<p class="insignia error">Dato incoherente en el servidor: ${esc(c.choques.join('; '))}</p>` : ''}
+                <div class="hueco" data-unidad="${esc(u)}" data-acepta="tec">
+                  <span class="hueco-titulo">Técnicos</span>
+                  ${c.tecs.map(fichaTec).join('') || `<p class="vacio">${lectura ? 'Nadie asignado.' : 'Suelta aquí un técnico.'}</p>`}
+                </div>
+                <div class="hueco" data-unidad="${esc(u)}" data-acepta="veh">
+                  <span class="hueco-titulo">Vehículo</span>
+                  ${c.mat ? fichaVeh(c.mat) : `<p class="vacio">${lectura ? 'Sin vehículo.' : 'Suelta aquí un vehículo.'}</p>`}
+                </div>
+              </article>`).join('') || '<p class="vacio">No hay unidades activas. Créalas en «Técnicos y vehículos».</p>'}
+          </div>
+        </section>
+        <section class="columna" data-libre="veh" aria-label="Vehículos sin asignar">
+          <h2>Vehículos sin asignar <span class="insignia">${libresVeh.length}</span></h2>
+          <div class="lista-fichas">${libresVeh.map(v => fichaVeh(v.matricula)).join('') || '<p class="vacio">Todos los vehículos están asignados.</p>'}</div>
+        </section>
+      </div>`;
+  }
+
+  // ── Eventos (delegados, se enlazan una vez) ──
+  const zonaDe = n => n.closest('.hueco[data-unidad], .columna[data-libre]');
+  const aceptaTipo = (zona, tipo) => (zona.dataset.acepta || zona.dataset.libre) === tipo;
+  const destinoDe = zona => zona.dataset.unidad || LIBRE;
+
+  function alArrastrar(ev) {
+    const f = ev.target.closest?.('.ficha[draggable="true"]');
+    if (!f) return;
+    arrastre = { tipo: f.dataset.tipo, id: f.dataset.id };
+    ev.dataTransfer.effectAllowed = 'move';
+    ev.dataTransfer.setData('text/plain', f.dataset.id);
+    f.classList.add('arrastrando');
+  }
+  function alPasar(ev) {
+    if (!arrastre) return;
+    const z = zonaDe(ev.target);
+    if (!z || !aceptaTipo(z, arrastre.tipo)) return;
+    ev.preventDefault();
+    ev.dataTransfer.dropEffect = 'move';
+    z.classList.add('encima');
+  }
+  function alSalir(ev) {
+    const z = zonaDe(ev.target);
+    if (z && !z.contains(ev.relatedTarget)) z.classList.remove('encima');
+  }
+  function alSoltar(ev) {
+    if (!arrastre) return;
+    const z = zonaDe(ev.target);
+    el.querySelectorAll('.encima').forEach(n => n.classList.remove('encima'));
+    if (!z || !aceptaTipo(z, arrastre.tipo)) return;
+    ev.preventDefault();
+    const { tipo, id } = arrastre;
+    arrastre = null;
+    soltar(tipo, id, destinoDe(z));
+  }
+  function alTerminar() {
+    arrastre = null;
+    el.querySelectorAll('.arrastrando, .encima').forEach(n => n.classList.remove('arrastrando', 'encima'));
+  }
+  async function alCambiar(ev) {
+    const t = ev.target;
+    if (t.id === 'dia') {
+      if (!t.value) return;
+      if (cambios().length && !(await preguntar('Cambios sin guardar', '<p>Si cambias de día se descartan los cambios que no has guardado.</p>', { aceptar: 'Descartar y cambiar', peligro: true }))) {
+        t.value = dia;
+        return;
+      }
+      dia = t.value;
+      recalcular();
+      pintar();
+    } else if (t.classList.contains('mover')) {
+      const valor = t.value;
+      await soltar(t.dataset.tipo, t.dataset.id, valor);
+      pintar();   // si se canceló, el desplegable vuelve a su sitio
+    }
+  }
+  async function alPulsar(ev) {
+    const b = ev.target.closest('[data-accion]');
+    if (!b) return;
+    const a = b.dataset.accion;
+    if (a === 'recargar') recargar();
+    if (a === 'guardar') guardar();
+    if (a === 'descartar') { recalcular(); pintar(); }
+    if (a === 'hoy') { const d = el.querySelector('#dia'); d.value = hoy(); d.dispatchEvent(new Event('change', { bubbles: true })); }
+  }
+
+  el.addEventListener('dragstart', alArrastrar);
+  el.addEventListener('dragover', alPasar);
+  el.addEventListener('dragleave', alSalir);
+  el.addEventListener('drop', alSoltar);
+  el.addEventListener('dragend', alTerminar);
+  el.addEventListener('change', alCambiar);
+  el.addEventListener('click', alPulsar);
+
+  recargar();
+
+  return {
+    pendiente: () => !!(cfg && borrador && !soloLectura() && cambios().length),
+    recargar,
+    desmontar() {
+      el.removeEventListener('dragstart', alArrastrar);
+      el.removeEventListener('dragover', alPasar);
+      el.removeEventListener('dragleave', alSalir);
+      el.removeEventListener('drop', alSoltar);
+      el.removeEventListener('dragend', alTerminar);
+      el.removeEventListener('change', alCambiar);
+      el.removeEventListener('click', alPulsar);
+    },
+  };
+}

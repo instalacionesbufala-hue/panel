@@ -125,7 +125,7 @@ async function enviarAProduccion(accion, { metodo = 'GET', params = {}, cuerpo =
     throw new ErrorApi(
       e.name === 'AbortError'
         ? 'El servidor no ha respondido a tiempo. Lo que has escrito sigue en pantalla: vuelve a intentarlo.'
-        : 'No se puede contactar con el servidor. Comprueba la conexión; lo que has escrito sigue en pantalla.',
+        : 'No se puede contactar con el servidor. Si tienes conexión, suele ser un fallo momentáneo de Google: espera un minuto y vuelve a intentarlo. Lo que has escrito sigue en pantalla.',
       'red');
   } finally {
     clearTimeout(temporizador);
@@ -377,8 +377,14 @@ function demoResponder(accion, params, p) {
       (p.vehiculos || []).forEach(v => poner(demo.vehiculos, 'matricula', v));
       // Como el backend, el id de una unidad nueva es su nombre (sin repetir)
       for (const u of p.unidades || []) {
-        if (!u.id) { let id = u.nombre, n = 2; while (demo.unidades.some(x => x.id === id)) id = `${u.nombre} (${n++})`; u.id = id; asignados.unidades.push(id); }
-        poner(demo.unidades, 'id', { tipo: 'productiva', computaVariable: true, ...u });
+        if (!u.id) {
+          // Como el backend: el id es el nombre, no se repite, y computaVariable se deriva del nombre
+          if (demo.unidades.some(x => x.id === u.nombre)) return { ok: false, rechazado: true, accion, error: `Ya existe la unidad «${u.nombre}».` };
+          u.id = u.nombre; asignados.unidades.push(u.id);
+          poner(demo.unidades, 'id', { tipo: 'productiva', activa: true, computaVariable: /^Búfala \d+$/.test(u.nombre), ...u });
+          continue;
+        }
+        poner(demo.unidades, 'id', u);
       }
       for (const a of nuevas) {
         for (const v of demo.asignaciones) {

@@ -1,6 +1,6 @@
 // Liquidación mensual: solo lectura. El cálculo lo hace el backend; aquí solo se muestra.
-import * as api from './api.js?v=9';
-import { esc, eur, mesActual, nombreMes, cajaError, selectorMes } from './ui.js?v=9';
+import * as api from './api.js?v=10';
+import { esc, eur, mesActual, nombreMes, cajaError, selectorMes } from './ui.js?v=10';
 
 export function montar(el) {
   let mes = mesActual();
@@ -17,7 +17,7 @@ export function montar(el) {
 
   // computaVariable: false ⇒ la unidad y sus técnicos quedan fuera del variable (BACKEND.md).
   // El backend no debería mandar esas filas; si llegan, se apartan y no se muestran como reparto.
-  const fueraDelVariable = f => (unidades || []).some(u => u.computaVariable === false && (u.id === f.unidad || u.nombre === f.unidad));
+  const fueraDelVariable = f => (unidades || []).some(u => u.computaVariable === false && u.id === f.unidad);
 
   function pintar() {
     const cabecera = `<div class="barra">
@@ -50,7 +50,7 @@ export function montar(el) {
         </tr></thead>
         <tbody>${filas.map(f => `<tr>
           <td><strong>${esc(f.nombre)}</strong> <span class="tenue">${esc(f.idTec)}</span></td>
-          <td>${esc(f.unidad || '—')}</td>
+          <td>${esc((unidades || []).find(u => u.id === f.unidad)?.nombre || f.unidad || '—')}</td>
           <td class="num">${esc(f.obras ?? '—')}</td>
           <td class="num">${eur(f.ingresos)}</td>
           <td class="num">${eur(f.material)}</td>

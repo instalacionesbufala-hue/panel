@@ -1,6 +1,6 @@
 // Maestros: técnicos, vehículos y unidades. Nunca se borra nada: se da de baja con fecha.
-import * as api from './api.js?v=9';
-import { esc, eur, fecha, hoy, vigente, leerImporte, importeEditable, avisar, preguntar, cajaError, listaAvisos } from './ui.js?v=9';
+import * as api from './api.js?v=10';
+import { esc, eur, fecha, hoy, vigente, leerImporte, importeEditable, avisar, preguntar, cajaError, listaAvisos } from './ui.js?v=10';
 
 export function montar(el) {
   let cfg = null;
@@ -102,9 +102,17 @@ export function montar(el) {
   // ── Unidades ──
   function altaUnidad() {
     return formulario('Nueva unidad',
-      v => '<p class="tenue">El identificador lo asigna el servidor al guardar.</p>' + campo('nombre', 'Nombre', v.nombre, 'required'),
-      { nombre: `Búfala ${cfg.unidades.length + 1}` },
-      v => ({ unidades: [{ nombre: v.nombre.trim(), activa: true }] }), 'Crear');
+      v => '<p class="tenue">El nombre es también su identificador y no se puede repetir. Si «computa variable» lo decide el servidor.</p>'
+        + campo('nombre', 'Nombre', v.nombre, 'required')
+        + `<label>Tipo<select name="tipo">${[['productiva', 'Productiva (brigada)'], ['no_productiva', 'No productiva']]
+          .map(([valor, texto]) => `<option value="${valor}" ${v.tipo === valor ? 'selected' : ''}>${texto}</option>`).join('')}</select></label>`,
+      { nombre: `Búfala ${cfg.unidades.length + 1}`, tipo: 'productiva' },
+      v => {
+        const nombre = v.nombre.trim();
+        const igual = x => String(x || '').trim().toLowerCase() === nombre.toLowerCase();
+        if (cfg.unidades.some(u => igual(u.id) || igual(u.nombre))) return `Ya existe una unidad llamada «${nombre}».`;
+        return { unidades: [{ nombre, tipo: v.tipo }] };
+      }, 'Crear');
   }
   function editarUnidad(u) {
     return formulario(`Renombrar ${u.nombre}`, v => campo('nombre', 'Nombre', v.nombre, 'required'), { nombre: u.nombre },

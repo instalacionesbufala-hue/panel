@@ -1,12 +1,11 @@
 // Pantalla de unidades: formar unidades arrastrando técnicos y vehículos.
-import * as api from './api.js?v=9';
-import { esc, fecha, hoy, vigente, avisar, preguntar, cajaError, listaAvisos } from './ui.js?v=9';
+import * as api from './api.js?v=10';
+import { esc, fecha, hoy, vigente, avisar, preguntar, cajaError, listaAvisos } from './ui.js?v=10';
 
 const LIBRE = '__libre__';
-// Solo los técnicos de este rol se pueden asignar a una unidad (panelConfig, v3.20.13).
-// Si un técnico no trae rol (datos antiguos o de ejemplo), se considera asignable.
-const ROL_ASIGNABLE = 'Instalador';
-const asignable = t => !t.rol || t.rol === ROL_ASIGNABLE;
+// El rol no restringe nada (BACKEND.md): cualquier técnico va a cualquier unidad. Solo se avisa
+// cuando la combinación parece rara; decide quien usa el panel.
+const ROLES_NO_PRODUCTIVOS = ['SAT', 'Gerencia'];
 // Unidades no productivas (SAT, Estructura): zona aparte y sin límite de técnicos por unidad
 const esNoProductiva = u => u?.tipo === 'no_productiva';
 
@@ -41,8 +40,7 @@ export function montar(el) {
     const conAsignacion = new Set(cfg.asignaciones.filter(a => vigente(a.desde, a.hasta, dia)).map(a => a.idUnidad));
     return cfg.unidades.filter(u => soloLectura() ? (u.activa || conAsignacion.has(u.id)) : u.activa !== false);
   }
-  const tecnicosVisibles = () => cfg.tecnicos.filter(t => vigente(t.alta, t.baja, dia) && asignable(t));
-  const noAsignables = () => cfg.tecnicos.filter(t => vigente(t.alta, t.baja, dia) && !asignable(t));
+  const tecnicosVisibles = () => cfg.tecnicos.filter(t => vigente(t.alta, t.baja, dia));
   const vehiculosVisibles = () => cfg.vehiculos.filter(v => vigente(v.desde, v.hasta, dia));
 
   function composicion() {
@@ -83,12 +81,13 @@ export function montar(el) {
         filas.push({ idTec: id, idUnidad: despues, matricula: despues ? matDespues : null, desde: dia, hasta: null });
       }
     }
-    // Unidades que quedan sin técnicos: el vehículo se asigna (o se retira) a la unidad sola
+    // Fila de la unidad siempre que cambie su vehículo, tenga técnicos o no (BACKEND.md). También cuando
+    // se queda sin técnicos y conserva el vehículo. El backend la trata como idempotente.
     for (const [u, c] of borrador) {
       const b = base.get(u) || { tecs: [], mat: null };
-      if (c.tecs.length) continue;
-      if (c.mat && (b.mat !== c.mat || b.tecs.length)) filas.push({ idTec: null, idUnidad: u, matricula: c.mat, desde: dia, hasta: null });
-      if (!c.mat && b.mat && !b.tecs.length) filas.push({ idTec: null, idUnidad: u, matricula: null, desde: dia, hasta: null });
+      if (b.mat !== c.mat || (c.mat && !c.tecs.length && b.tecs.length)) {
+        filas.push({ idTec: null, idUnidad: u, matricula: c.mat, desde: dia, hasta: null });
+      }
     }
     return filas;
   }
@@ -120,6 +119,8 @@ export function montar(el) {
       if (origen === destino || (!origen && destino === LIBRE)) return;
       const t = tec(id);
       if (destino !== LIBRE) {
+        const rolRaro = t?.rol && (ROLES_NO_PRODUCTIVOS.includes(t.rol) !== esNoProductiva(unidad(destino)));
+        if (rolRaro) avisar(`Ojo: ${t.nombre} tiene rol ${t.rol} y va a «${nombreUnidad(destino)}». Se permite, pero revísalo.`);
         const limite = cfg.limites?.tecnicosPorUnidad;   // solo si el backend lo define; no aplica a las no productivas
         if (limite && !esNoProductiva(unidad(destino)) && borrador.get(destino).tecs.length >= limite) {
           rechazo(destino);
@@ -191,7 +192,7 @@ export function montar(el) {
     const t = tec(id) || { id, nombre: id };
     return `<div class="ficha tecnico" ${soloLectura() ? '' : 'draggable="true"'} data-tipo="tec" data-id="${esc(id)}">
       <span class="nombre">${esc(t.nombre)}</span>
-      <span class="detalle">${esc(t.id)}${t.grupo ? ' · grupo ' + esc(t.grupo) : ''}${t.rol && !asignable(t) ? ' · ' + esc(t.rol) : ''}</span>
+      <span class="detalle">${esc(t.id)}${t.grupo ? ' · grupo ' + esc(t.grupo) : ''}${t.rol ? ' · ' + esc(t.rol) : ''}</span>
       ${selectorMover('tec', id, unidadDeTec(borrador, id))}
     </div>`;
   }
@@ -225,7 +226,6 @@ export function montar(el) {
     const asignadosTec = new Set([...borrador.values()].flatMap(c => c.tecs));
     const asignadosVeh = new Set([...borrador.values()].map(c => c.mat).filter(Boolean));
     const libresTec = tecnicosVisibles().filter(t => !asignadosTec.has(t.id));
-    const otros = noAsignables();
     const libresVeh = vehiculosVisibles().filter(v => !asignadosVeh.has(v.matricula));
     // Primer día con composición registrada. Si alguna asignación vale «desde siempre» (desde: null), no hay límite.
     const primerRegistro = cfg.asignaciones.some(a => !a.desde) ? null
@@ -271,7 +271,6 @@ export function montar(el) {
       <div class="tablero ${lectura ? 'solo-lectura' : ''}">
         <section class="columna" data-libre="tec" aria-label="Técnicos sin asignar">
           <h2>Técnicos sin asignar <span class="insignia">${libresTec.length}</span></h2>
-          ${otros.length ? `<p class="tenue">Solo se asignan instaladores. No se muestran ${otros.length} de otros roles (${esc([...new Set(otros.map(t => t.rol))].join(", "))}).</p>` : ""}
           <div class="lista-fichas">${libresTec.map(t => fichaTec(t.id)).join('') || '<p class="vacio">Todos los técnicos están en alguna unidad.</p>'}</div>
         </section>
         <section class="col-unidades" aria-label="Unidades">

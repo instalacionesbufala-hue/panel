@@ -80,6 +80,7 @@ p { margin: 0 0 .5rem; }
 
 .franja { padding: .6rem 1rem; background: var(--error-fondo); color: var(--error); display: flex; gap: 1rem; align-items: center; flex-wrap: wrap; }
 .franja .boton { margin-left: auto; }
+.franja-demo { padding: .5rem 1rem; background: var(--aviso-fondo); color: var(--aviso); border-bottom: 1px solid var(--borde); font-size: .92rem; }
 
 .vista { padding: 1rem; max-width: 1400px; margin: 0 auto; outline: none; }
 .cargando { color: var(--tenue); padding: 2rem 0; }

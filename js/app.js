@@ -56,6 +56,13 @@ $('#form-acceso').addEventListener('submit', async ev => {
 
 api.alPedirAcceso(pedirAcceso);
 
+// Aviso permanente mientras alguna acción se sirva con datos de ejemplo
+if (api.hayDemostracion()) {
+  const d = $('#franja-demo');
+  d.innerHTML = '<strong>Modo demostración.</strong> El acceso es real, pero los datos son de ejemplo: lo que guardes se queda en esta pestaña y se pierde al recargar. No se envía nada al sistema de gestión.';
+  d.hidden = false;
+}
+
 $('#salir').addEventListener('click', () => {
   if (vistaActual?.control?.pendiente?.() && !confirm('Hay cambios sin guardar. ¿Cerrar la sesión igualmente?')) return;
   api.cerrarSesion();

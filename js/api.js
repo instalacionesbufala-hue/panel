@@ -3,12 +3,21 @@
 // URL de la implementación activa de Apps Script. Es el único sitio donde se configura.
 export const URL_BACKEND = 'https://script.google.com/macros/s/AKfycbxMMeyP9g75p1lxytithxeFfQVbe0cXV3aFHlJObfI05ewIN1mtTxPYBNPYp--BPKc9tw/exec';
 
+// Acciones que el backend ha CONFIRMADO como implementadas. Solo estas van a producción.
+// El resto se sirve en modo demostración con los datos de ejemplo de más abajo.
+// Cuando el backend confirme otra acción, se añade aquí y deja de usarse su demostración.
+const EN_PRODUCCION = new Set(['panelLogin']);
+
+const TODAS = ['panelLogin', 'panelConfig', 'panelCompras', 'panelLiquidacion', 'panelGuardarConfig',
+  'panelAsignarCombustible', 'panelClasificarProveedor', 'panelCostesTecnico'];
+export const hayDemostracion = () => TODAS.some(a => !EN_PRODUCCION.has(a));
+
 const CLAVE_TESTIGO = 'bufala-panel-testigo';
 const ESPERA_MAX_MS = 60000;
 
 export class ErrorApi extends Error {
-  // tipo: 'red' (no hay conexión), 'contrato' (el backend no conoce la acción),
-  //       'backend' (el backend rechaza), 'sesion' (hay que volver a entrar)
+  // tipo: 'red' (no hay conexión), 'contrato' (respuesta que no cumple el contrato),
+  //       'backend' (el backend rechaza), 'bloqueado' (demasiados intentos), 'sesion' (hay que volver a entrar)
   constructor(mensaje, tipo) {
     super(mensaje);
     this.tipo = tipo;
@@ -16,28 +25,24 @@ export class ErrorApi extends Error {
 }
 
 // ── Sesión ──────────────────────────────────────────────
+let testigoEnMemoria = null;
 function leerTestigo() {
   try {
     const t = JSON.parse(sessionStorage.getItem(CLAVE_TESTIGO) || 'null');
-    if (!t || !t.token) return null;
-    if (t.caduca && Date.parse(t.caduca) <= Date.now()) {
-      sessionStorage.removeItem(CLAVE_TESTIGO);
-      return null;
-    }
-    return t;
+    return t && t.token ? t : null;
   } catch {
     return null;
   }
 }
 function guardarTestigo(token, caduca) {
-  try { sessionStorage.setItem(CLAVE_TESTIGO, JSON.stringify({ token, caduca: caduca || null })); } catch { /* sin almacenamiento: la sesión dura lo que la pestaña */ }
-  testigoEnMemoria = { token, caduca };
+  testigoEnMemoria = { token, caduca: caduca || null };
+  try { sessionStorage.setItem(CLAVE_TESTIGO, JSON.stringify(testigoEnMemoria)); } catch { /* sin almacenamiento: la sesión dura lo que la pestaña */ }
 }
-let testigoEnMemoria = null;
 function testigoActual() {
   const t = leerTestigo() || testigoEnMemoria;
-  if (t && t.caduca && Date.parse(t.caduca) <= Date.now()) return null;
-  return t ? t.token : null;
+  if (!t) return null;
+  if (t.caduca && Date.parse(t.caduca) <= Date.now()) { cerrarSesion(); return null; }
+  return t.token;
 }
 export function haySesion() { return !!testigoActual(); }
 export function cerrarSesion() {
@@ -55,40 +60,26 @@ const oyentes = new Set();
 export function alCambiarConexion(fn) { oyentes.add(fn); }
 function avisarConexion(ok, detalle) { oyentes.forEach(fn => fn(ok, detalle)); }
 
-// ── Transporte ─────────────────────────────────────────
+// ── Transporte a producción ────────────────────────────
 function esSesionCaducada(r) {
   const c = String(r.codigo || r.code || '').toLowerCase();
   return c === 'sesion' || c === 'sesion_caducada' || r.sesionCaducada === true;
 }
 
-// SALVAGUARDA: el doPost actual del backend trata CUALQUIER POST como un cierre de obra y lo
-// encola. Antes de enviar nada por POST se comprueba con ?action=ping (solo lectura) que el
-// backend declara el panel ("panel": true). Si no, no se envía nada.
-let backendConPanel = null;
-async function comprobarBackend() {
-  if (backendConPanel) return;
-  const r = await peticion('ping', {}, true);
-  if (!r.panel) {
-    throw new ErrorApi('El backend activo (' + (r.version || 'versión desconocida') + ') todavía no tiene las acciones del panel. '
-      + 'No se ha enviado nada: con el backend actual, cualquier envío se registraría como un cierre de obra.', 'contrato');
-  }
-  backendConPanel = true;
-}
-
-async function peticion(accion, { metodo = 'GET', params = {}, cuerpo = null, conTestigo = true } = {}, sinComprobar = false) {
-  if (metodo !== 'GET' && !sinComprobar) await comprobarBackend();
+async function aProduccion(accion, { metodo = 'GET', params = {}, cuerpo = null, conTestigo = true } = {}) {
+  if (!EN_PRODUCCION.has(accion)) throw new ErrorApi(`La acción «${accion}» no está confirmada en el backend.`, 'contrato');
   const url = new URL(URL_BACKEND);
-  url.searchParams.set('action', accion);
   const token = conTestigo ? testigoActual() : null;
   const opciones = { method: metodo, redirect: 'follow' };
 
   if (metodo === 'GET') {
+    url.searchParams.set('action', accion);
     for (const [k, v] of Object.entries(params)) url.searchParams.set(k, v);
     if (token) url.searchParams.set('token', token);
   } else {
-    // application/x-www-form-urlencoded: petición simple, sin comprobación previa CORS
+    // La acción va dentro de payload. application/x-www-form-urlencoded: petición simple, sin comprobación previa CORS
     const form = new URLSearchParams();
-    form.set('payload', JSON.stringify(cuerpo ?? {}));
+    form.set('payload', JSON.stringify({ accion, ...(cuerpo ?? {}) }));
     if (token) form.set('token', token);
     opciones.body = form;
   }
@@ -116,24 +107,26 @@ async function peticion(accion, { metodo = 'GET', params = {}, cuerpo = null, co
   try {
     datos = JSON.parse(texto);
   } catch {
-    // Apps Script devuelve una página HTML cuando no reconoce la acción
     avisarConexion(true);
-    throw new ErrorApi(`El servidor no reconoce la acción «${accion}». Hay que añadirla al backend (ver DECISIONES.md).`, 'contrato');
+    throw new ErrorApi(`El servidor ha respondido a «${accion}» con algo que no es JSON.`, 'contrato');
   }
   avisarConexion(true);
 
   if (datos && datos.ok === false) {
     if (esSesionCaducada(datos)) throw new ErrorApi(datos.error || 'La sesión ha caducado.', 'sesion');
+    if (datos.bloqueado) throw new ErrorApi(datos.error || 'Demasiados intentos fallidos: el acceso está bloqueado temporalmente.', 'bloqueado');
     throw new ErrorApi(datos.error || 'El servidor ha rechazado la operación sin indicar el motivo.', 'backend');
   }
-  if (!datos || datos.ok !== true) {
-    throw new ErrorApi(`Respuesta inesperada del servidor en «${accion}».`, 'contrato');
-  }
-  // En las escrituras el backend debe repetir la acción: así se sabe que no la ha tratado como otra cosa
-  if (metodo !== 'GET' && datos.accion !== accion) {
+  if (!datos || datos.ok !== true) throw new ErrorApi(`Respuesta inesperada del servidor en «${accion}».`, 'contrato');
+  // En las escrituras (salvo el acceso, que se valida por el testigo) el backend debe repetir la acción
+  if (metodo !== 'GET' && accion !== 'panelLogin' && datos.accion !== accion) {
     throw new ErrorApi(`El servidor ha respondido a «${accion}» sin confirmarla. No se da por guardado.`, 'contrato');
   }
   return datos;
+}
+
+async function peticion(accion, opciones = {}) {
+  return EN_PRODUCCION.has(accion) ? aProduccion(accion, opciones) : demostracion(accion, opciones);
 }
 
 // Si la sesión caduca, se pide la contraseña encima de la vista y se repite la llamada.
@@ -165,3 +158,150 @@ export const guardarConfig = cambios => llamar('panelGuardarConfig', { metodo: '
 export const asignarCombustible = asignaciones => llamar('panelAsignarCombustible', { metodo: 'POST', cuerpo: { asignaciones } });
 export const clasificarProveedor = (proveedor, tipo) => llamar('panelClasificarProveedor', { metodo: 'POST', cuerpo: { proveedor, tipo } });
 export const guardarCostes = (mes, costes, origen) => llamar('panelCostesTecnico', { metodo: 'POST', cuerpo: { mes, costes, origen } });
+
+// ════════════════════════════════════════════════════════
+// MODO DEMOSTRACIÓN
+// Datos de ejemplo con la forma exacta del contrato. Viven solo en memoria: se pierden al
+// recargar y nunca salen del navegador. Los importes son inventados y solo sirven para ver
+// la interfaz; no son parámetros de negocio.
+// ════════════════════════════════════════════════════════
+const dos = n => String(n).padStart(2, '0');
+const aIso = d => `${d.getFullYear()}-${dos(d.getMonth() + 1)}-${dos(d.getDate())}`;
+const hoyIso = () => aIso(new Date());
+const mesMas = (mes, n) => { const [a, m] = mes.split('-').map(Number); const d = new Date(a, m - 1 + n, 1); return `${d.getFullYear()}-${dos(d.getMonth() + 1)}`; };
+const diaAntes = iso => { const [a, m, d] = iso.split('-').map(Number); return aIso(new Date(a, m - 1, d - 1)); };
+const vig = (desde, hasta, dia) => (!desde || desde <= dia) && (!hasta || hasta >= dia);
+const vigMes = (desde, hasta, mes) => (!desde || desde.slice(0, 7) <= mes) && (!hasta || hasta.slice(0, 7) >= mes);
+const copia = o => JSON.parse(JSON.stringify(o));
+
+function crearDemo() {
+  const M = hoyIso().slice(0, 7), P = mesMas(M, -1), A = hoyIso().slice(0, 4);
+  const finP = diaAntes(`${M}-01`);
+  return {
+    tecnicos: [
+      { id: 'T01', nombre: 'Antonio Ruiz', grupo: '3', alta: `${A}-01-01`, baja: null },
+      { id: 'T02', nombre: 'Lucía Pérez', grupo: '2', alta: `${A}-02-01`, baja: null },
+      { id: 'T03', nombre: 'Javier Gómez', grupo: '3', alta: `${A}-04-01`, baja: null },
+      { id: 'T04', nombre: 'María López', grupo: '2', alta: `${A}-05-01`, baja: null },
+      { id: 'T05', nombre: 'Pedro Sanz', grupo: '4', alta: `${A}-06-01`, baja: null },
+      { id: 'T06', nombre: 'Elena Martín', grupo: '3', alta: `${A}-01-01`, baja: finP },
+    ],
+    vehiculos: [
+      { matricula: '1111AAA', modelo: 'Renault Kangoo', rentingMes: 495.87, desde: `${A}-01-01`, hasta: null },
+      { matricula: '2222BBB', modelo: 'Citroën Berlingo', rentingMes: 470, desde: `${A}-01-01`, hasta: null },
+      { matricula: '3333CCC', modelo: 'Ford Transit', rentingMes: 520, desde: `${A}-03-01`, hasta: null },
+    ],
+    unidades: [
+      { id: 'U1', nombre: 'Búfala 1', activa: true },
+      { id: 'U2', nombre: 'Búfala 2', activa: true },
+      { id: 'U3', nombre: 'Búfala 3', activa: true },
+    ],
+    asignaciones: [
+      { idTec: 'T01', idUnidad: 'U1', matricula: '1111AAA', desde: `${A}-01-01`, hasta: finP },
+      { idTec: 'T06', idUnidad: 'U1', matricula: '1111AAA', desde: `${A}-01-01`, hasta: finP },
+      { idTec: 'T01', idUnidad: 'U1', matricula: '1111AAA', desde: `${M}-01`, hasta: null },
+      { idTec: 'T02', idUnidad: 'U1', matricula: '1111AAA', desde: `${M}-01`, hasta: null },
+      { idTec: 'T03', idUnidad: 'U2', matricula: '2222BBB', desde: `${M}-01`, hasta: null },
+    ],
+    tramos: [
+      { desde: `${A}-01-01`, hasta: null, margenMin: 2000, margenMax: 2500, importe: 30 },
+    ],
+    ejercicio: { anio: Number(A), jornadaAnual: 1748, diasEfectivos: 227 },
+    facturas: {
+      [M]: [
+        { id: 'd1', fecha: `${M}-04`, proveedor: 'BALLENOIL SA', tipo: 'combustible', importeSinIva: 82.31, matricula: null, numero: 'F-2026-1234' },
+        { id: 'd2', fecha: `${M}-08`, proveedor: 'REPSOL', tipo: 'combustible', importeSinIva: 65.10, matricula: null, numero: 'R-0088' },
+        { id: 'd3', fecha: `${M}-12`, proveedor: 'BALLENOIL SA', tipo: 'combustible', importeSinIva: 90.00, matricula: null, numero: 'F-2026-1301' },
+        { id: 'd4', fecha: `${M}-02`, proveedor: 'CEPSA', tipo: 'combustible', importeSinIva: 70.00, matricula: '1111AAA', numero: 'C-0001' },
+        { id: 'd5', fecha: `${M}-15`, proveedor: 'ELECTROSUR', tipo: 'material', importeSinIva: 300, matricula: null, numero: 'E-0005' },
+      ],
+      [P]: [
+        { id: 'd6', fecha: `${P}-10`, proveedor: 'CEPSA', tipo: 'combustible', importeSinIva: 120, matricula: '1111AAA', numero: 'C-0000' },
+        { id: 'd7', fecha: `${P}-11`, proveedor: 'CEPSA', tipo: 'combustible', importeSinIva: 60, matricula: '2222BBB', numero: 'C-0002' },
+      ],
+    },
+    sinClasificar: { [M]: [{ id: 'd8', fecha: `${M}-10`, proveedor: 'GASOLINERA NUEVA SL', importeSinIva: 45.5 }] },
+    // Costes de empresa ya volcados por la gestoría, por mes: idTec → importe
+    costes: { [P]: { T01: 2579.29, T02: 2310.4, T03: 2598.75, T06: 2490.1 } },
+    excepciones: { [M]: [{ tipo: 'obra sin ejecutantes', detalle: 'E2631532 · 619,05 €' }] },
+  };
+}
+let demo = null;
+
+function demoUnidadDe(idTec, dia) {
+  const a = demo.asignaciones.find(x => x.idTec === idTec && vig(x.desde, x.hasta, dia));
+  return a ? demo.unidades.find(u => u.id === a.idUnidad)?.nombre || a.idUnidad : '';
+}
+
+// Filas de ejemplo para la liquidación. No es el cálculo real, que solo hace el backend.
+function demoLiquidacion(mes) {
+  const finMes = diaAntes(`${mesMas(mes, 1)}-01`);
+  const costes = demo.costes[mes] || {};
+  const ejemplo = [[18, 8420.5, 2110.3, 312.4, 'más de 3.000', 75], [15, 7300, 1850, 312.4, '2.500–3.000', 50],
+    [12, 6100.25, 1600, 290, '2.000–2.500', 30], [9, 4200, 1100, 290, 'menos de 2.000', 0], [7, 3500, 900, 0, 'menos de 2.000', 0]];
+  const filas = demo.tecnicos.filter(t => vigMes(t.alta, t.baja, mes)).map((t, i) => {
+    const [obras, ingresos, material, costeVeh, tramo, importe] = ejemplo[i % ejemplo.length];
+    const real = costes[t.id];
+    const costeTec = real ?? 2450;
+    return { idTec: t.id, nombre: t.nombre, unidad: demoUnidadDe(t.id, finMes < hoyIso() ? finMes : hoyIso()), obras,
+      ingresos, material, costeTec, costeVeh, margen: Math.round((ingresos - material - costeTec - costeVeh) * 100) / 100,
+      tramo, importe, origenCostes: real != null ? 'gestoria' : 'estimacion' };
+  });
+  return { ok: true, mes, estado: mes < hoyIso().slice(0, 7) ? 'cerrado' : 'abierto', filas,
+    total: filas.reduce((s, f) => s + f.importe, 0), excepciones: demo.excepciones[mes] || [] };
+}
+
+function demoResponder(accion, params, p) {
+  const conActivo = (lista, d, h) => lista.map(o => ({ ...o, activo: vig(o[d], o[h], hoyIso()) }));
+  switch (accion) {
+    case 'panelConfig':
+      return { ok: true, tecnicos: conActivo(demo.tecnicos, 'alta', 'baja'), vehiculos: conActivo(demo.vehiculos, 'desde', 'hasta'),
+        unidades: demo.unidades, asignaciones: demo.asignaciones, tramos: demo.tramos, ejercicio: demo.ejercicio };
+    case 'panelCompras':
+      return { ok: true, mes: params.mes, facturas: demo.facturas[params.mes] || [], sinClasificar: demo.sinClasificar[params.mes] || [] };
+    case 'panelLiquidacion':
+      return demoLiquidacion(params.mes);
+    case 'panelGuardarConfig': {
+      const nuevas = p.asignaciones || [];
+      const ids = nuevas.filter(a => a.idTec && a.idUnidad).map(a => a.idTec);
+      if (new Set(ids).size !== ids.length) return { ok: false, error: 'Un técnico aparece en dos unidades el mismo día.' };
+      const poner = (lista, clave, o) => { const i = lista.findIndex(x => x[clave] === o[clave]); if (i >= 0) lista[i] = o; else lista.push(o); };
+      (p.tecnicos || []).forEach(t => poner(demo.tecnicos, 'id', t));
+      (p.vehiculos || []).forEach(v => poner(demo.vehiculos, 'matricula', v));
+      (p.unidades || []).forEach(u => poner(demo.unidades, 'id', u));
+      for (const a of nuevas) {
+        for (const v of demo.asignaciones) {
+          const mismo = a.idTec ? v.idTec === a.idTec : (!v.idTec && v.idUnidad === a.idUnidad);
+          if (mismo && vig(v.desde, v.hasta, a.desde)) v.hasta = diaAntes(a.desde);
+        }
+        if (a.idUnidad) demo.asignaciones.push(a);
+      }
+      return { ok: true, accion, avisos: [] };
+    }
+    case 'panelAsignarCombustible':
+      for (const a of p.asignaciones || []) for (const lista of Object.values(demo.facturas)) {
+        const f = lista.find(x => x.id === a.idFactura);
+        if (f) f.matricula = a.matricula;
+      }
+      return { ok: true, accion };
+    case 'panelClasificarProveedor':
+      for (const [mes, lista] of Object.entries(demo.sinClasificar)) {
+        const suyas = lista.filter(f => f.proveedor === p.proveedor);
+        demo.sinClasificar[mes] = lista.filter(f => f.proveedor !== p.proveedor);
+        (demo.facturas[mes] ||= []).push(...suyas.map(f => ({ ...f, tipo: p.tipo, matricula: null, numero: '' })));
+      }
+      return { ok: true, accion };
+    case 'panelCostesTecnico':
+      demo.costes[p.mes] = { ...(demo.costes[p.mes] || {}), ...Object.fromEntries((p.costes || []).map(c => [c.idTec, c.costeEmpresaMes])) };
+      return { ok: true, accion };
+  }
+  return { ok: false, error: `La demostración no conoce la acción «${accion}».` };
+}
+
+async function demostracion(accion, { params = {}, cuerpo = null } = {}) {
+  if (!demo) demo = crearDemo();
+  await new Promise(r => setTimeout(r, 120));   // latencia simulada
+  const r = copia(demoResponder(accion, params, copia(cuerpo ?? {})));
+  if (r.ok === false) throw new ErrorApi(r.error, 'backend');
+  return r;
+}

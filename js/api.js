@@ -101,6 +101,7 @@ async function aProduccion(accion, { metodo = 'GET', params = {}, cuerpo = null,
   opciones.signal = control.signal;
 
   let texto;
+  const inicio = Date.now();
   try {
     const resp = await fetch(url, opciones);
     texto = await resp.text();
@@ -120,7 +121,9 @@ async function aProduccion(accion, { metodo = 'GET', params = {}, cuerpo = null,
     datos = JSON.parse(texto);
   } catch {
     avisarConexion(true);
-    throw new ErrorApi(`El servidor ha respondido a «${accion}» con algo que no es JSON.`, 'contrato');
+    const segundos = Math.round((Date.now() - inicio) / 1000);
+    throw new ErrorApi(`El servidor ha fallado al responder a «${accion}» (tras ${segundos} s)${motivoPaginaError(texto)}. `
+      + 'No es un fallo del panel: hay que avisar al backend. Puedes reintentarlo.', 'backend');
   }
   avisarConexion(true);
 
@@ -147,6 +150,17 @@ const LECTURA_DE = {
   panelClasificarProveedor: 'panelCompras',
   panelCostesTecnico: 'panelCostes',
 };
+
+// Cuando Apps Script falla, Google devuelve una página HTML. Se extrae su mensaje para mostrarlo.
+function motivoPaginaError(html) {
+  try {
+    const doc = new DOMParser().parseFromString(String(html || ''), 'text/html');
+    const msg = (doc.querySelector('.errorMessage')?.textContent || doc.title || '').replace(/\s+/g, ' ').trim().replace(/[.\s]+$/, '');
+    return msg ? `: «${msg.slice(0, 160)}»` : '';
+  } catch {
+    return '';
+  }
+}
 
 async function peticion(accion, opciones = {}) {
   const enProduccion = await accionesEnProduccion();
@@ -182,12 +196,29 @@ export async function entrar(clave) {
   return r;
 }
 
-export const leerConfig = () => llamar('panelConfig');
+// panelConfig tarda varios segundos: se guarda una copia en memoria (nunca en el navegador) y se
+// reutiliza al cambiar de pantalla. Solo se guardan lecturas correctas, así que «Reintentar» tras un
+// error vuelve a preguntar. La copia se olvida al guardar cambios y caduca a los 10 minutos.
+const VIDA_COPIA_CONFIG_MS = 10 * 60 * 1000;
+let copiaConfig = null;   // { promesa, hora }
+export function olvidarConfig() { copiaConfig = null; }
+export function leerConfig() {
+  if (copiaConfig && Date.now() - copiaConfig.hora < VIDA_COPIA_CONFIG_MS) return copiaConfig.promesa.then(copia);
+  const promesa = llamar('panelConfig');
+  const esta = { promesa, hora: Date.now() };
+  copiaConfig = esta;
+  promesa.catch(() => { if (copiaConfig === esta) copiaConfig = null; });
+  return promesa.then(copia);
+}
 export const leerCompras = mes => llamar('panelCompras', { params: { mes } });
 export const leerLiquidacion = mes => llamar('panelLiquidacion', { params: { mes } });
 export const leerCostes = (desde, hasta) => llamar('panelCostes', { params: { desde, hasta } });
 
-export const guardarConfig = cambios => llamar('panelGuardarConfig', { metodo: 'POST', cuerpo: cambios });
+export const guardarConfig = async cambios => {
+  const r = await llamar('panelGuardarConfig', { metodo: 'POST', cuerpo: cambios });
+  olvidarConfig();   // la siguiente lectura trae lo recién guardado
+  return r;
+};
 export const asignarCombustible = asignaciones => llamar('panelAsignarCombustible', { metodo: 'POST', cuerpo: { asignaciones } });
 export const clasificarProveedor = (proveedor, tipo) => llamar('panelClasificarProveedor', { metodo: 'POST', cuerpo: { proveedor, tipo } });
 export const guardarCostes = (mes, costes, origen) => llamar('panelCostesTecnico', { metodo: 'POST', cuerpo: { mes, costes, origen } });

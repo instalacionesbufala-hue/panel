@@ -2,6 +2,22 @@
 
 **El contrato vive en [`BACKEND.md`](BACKEND.md)**, lo mantiene el backend y manda sobre este fichero. Aquí queda lo que decide el panel por su cuenta y lo que el panel pregunta. Revisado contra BACKEND.md **v3.20.15** (`Panel_Config.gs` v1.1) el 23/09/2026.
 
+## ⚠️ Fallo en producción (23/09/2026, backend v3.20.16)
+
+**`panelConfig` con testigo no responde JSON.** Desde el panel en GitHub Pages, con una sesión válida, todas las pantallas que leen la configuración muestran que el servidor no ha respondido JSON. Comprobado con `curl`, sin tocar nada:
+
+| Petición | Resultado |
+|---|---|
+| `GET ?action=ping` | 200 · JSON · 4,7 s |
+| `GET ?action=panelConfig` (sin testigo) | 200 · JSON `codigo:"sesion"` · 2,0 s |
+| `GET ?action=panelConfig&token=invalido` | **404 · HTML de Google «Página no encontrada» / «Drive: No se puede abrir el archivo en estos momentos» · 33,8 s** |
+
+Con **cualquier** testigo en la URL, aunque sea inventado, la ejecución tarda unos 30 s y Google la corta con su página de error. Un testigo inválido debería devolver `codigo:"sesion"` al momento. Todo apunta a la comprobación del testigo, o a lo que se hace justo después. Con la v3.20.14 (09:15 UTC) la misma lectura funcionaba, en unos 4–5 s.
+
+Lo que hace ahora el panel ante esto: muestra el mensaje de la página de error de Google y cuánto ha tardado, e invita a reintentar.
+
+**Velocidad.** Aunque funcione, `panelConfig` tarda varios segundos. El panel ya guarda en memoria una copia durante la sesión (10 min, o hasta guardar), así que solo espera en la primera pantalla. Propuesta para el backend: calcular el JSON de `panelConfig` y guardarlo en `CacheService`, invalidándolo cuando cambien las tablas, como ya se hace con el dashboard (`dashGen`). Así respondería en menos de un segundo, sin sacar los datos de Google.
+
 ## Dudas abiertas para el backend
 
 1. **`panelConfig` está en producción, pero `panelGuardarConfig` no.** Como estaba previsto, el panel bloquea esa escritura: Unidades y Técnicos y vehículos son de solo consulta hasta que llegue `panelGuardarConfig`.

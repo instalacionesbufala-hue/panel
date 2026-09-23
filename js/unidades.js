@@ -1,6 +1,6 @@
 // Pantalla de unidades: formar unidades arrastrando técnicos y vehículos.
-import * as api from './api.js?v=7';
-import { esc, fecha, hoy, vigente, avisar, preguntar, cajaError, listaAvisos } from './ui.js?v=7';
+import * as api from './api.js?v=8';
+import { esc, fecha, hoy, vigente, avisar, preguntar, cajaError, listaAvisos } from './ui.js?v=8';
 
 const LIBRE = '__libre__';
 // Solo los técnicos de este rol se pueden asignar a una unidad (panelConfig, v3.20.13).

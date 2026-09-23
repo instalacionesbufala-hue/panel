@@ -1,6 +1,6 @@
 // Maestros: técnicos, vehículos y unidades. Nunca se borra nada: se da de baja con fecha.
-import * as api from './api.js?v=6';
-import { esc, eur, fecha, hoy, vigente, leerImporte, importeEditable, avisar, preguntar, cajaError, listaAvisos } from './ui.js?v=6';
+import * as api from './api.js?v=7';
+import { esc, eur, fecha, hoy, vigente, leerImporte, importeEditable, avisar, preguntar, cajaError, listaAvisos } from './ui.js?v=7';
 
 export function montar(el) {
   let cfg = null;
@@ -160,7 +160,7 @@ export function montar(el) {
         <div class="tabla-scroll"><table>
           <thead><tr><th>Matrícula</th><th>Modelo</th><th>Brigada hoy</th><th class="num">Renting/mes</th><th>Desde</th><th>Estado</th><th></th></tr></thead>
           <tbody>${vehs.map(v => `<tr class="${v.hasta && v.hasta < d ? 'baja' : ''}">
-            <td>${esc(v.matricula)}</td><td>${esc(v.modelo || '')}</td><td>${esc(v.brigada || '—')}</td><td class="num">${eur(v.rentingMes)}</td><td>${fecha(v.desde)}</td>
+            <td>${esc(v.matricula)}${v.sinMatricula ? ' <span class="insignia aviso" title="El recurso no tiene matrícula legible: se usa su código interno">sin matrícula</span>' : ''}</td><td>${esc(v.modelo || '')}</td><td>${esc(v.brigada || '—')}</td><td class="num">${eur(v.rentingMes)}</td><td>${fecha(v.desde)}</td>
             <td>${estado(v.desde, v.hasta)}</td><td>${botones('veh', v.matricula, !!v.hasta)}</td></tr>`).join('') || '<tr><td colspan="7" class="vacio">No hay vehículos.</td></tr>'}</tbody>
         </table></div>
       </section>
@@ -170,10 +170,10 @@ export function montar(el) {
         <div class="tabla-scroll"><table>
           <thead><tr><th>Id.</th><th>Nombre</th><th>Tipo</th><th>Estado</th><th></th></tr></thead>
           <tbody>${unis.map(u => `<tr class="${u.activa === false ? 'baja' : ''}">
-            <td>${esc(u.id)}</td><td>${esc(u.nombre)} ${u.demostracion ? '<span class="insignia sugerido">ejemplo</span>' : ''}</td>
-            <td>${u.tipo === 'no_productiva' ? 'No productiva' : u.tipo === 'instalacion' ? 'Brigada' : '—'}</td>
+            <td>${esc(u.id)}</td><td>${esc(u.nombre)}</td>
+            <td>${u.tipo === 'no_productiva' ? 'No productiva' : 'Brigada'}${u.computaVariable === false ? ' <span class="insignia">no computa variable</span>' : ''}</td>
             <td>${u.activa === false ? `<span class="insignia">baja${u.hasta ? ' ' + fecha(u.hasta) : ''}</span>` : '<span class="insignia ok">activa</span>'}</td>
-            <td>${u.demostracion ? '<span class="tenue">aún no publicada</span>' : botones('uni', u.id, u.activa === false)}</td></tr>`).join('') || '<tr><td colspan="5" class="vacio">No hay unidades.</td></tr>'}</tbody>
+            <td>${botones('uni', u.id, u.activa === false)}</td></tr>`).join('') || '<tr><td colspan="5" class="vacio">No hay unidades.</td></tr>'}</tbody>
         </table></div>
       </section>`;
   }

@@ -182,20 +182,7 @@ export async function entrar(clave) {
   return r;
 }
 
-export const leerConfig = async () => completarConfig(await llamar('panelConfig'));
-
-// Unidades no productivas (SAT, Estructura): el backend va a añadir unidades[].tipo
-// ('instalacion' | 'no_productiva'). Mientras panelConfig no lo traiga, se completan aquí
-// con datos de ejemplo marcados con demostracion:true. En cuanto el backend publique el campo,
-// esto deja de actuar solo. Las unidades de ejemplo nunca se envían al backend (ver unidades.js).
-const NO_PRODUCTIVAS_EJEMPLO = [
-  { id: 'NP-SAT', nombre: 'SAT', tipo: 'no_productiva', activa: true, demostracion: true },
-  { id: 'NP-EST', nombre: 'Estructura', tipo: 'no_productiva', activa: true, demostracion: true },
-];
-function completarConfig(c) {
-  if (!c || !Array.isArray(c.unidades) || c.unidades.some(u => u.tipo)) return c;
-  return { ...c, unidades: [...c.unidades.map(u => ({ ...u, tipo: 'instalacion' })), ...copia(NO_PRODUCTIVAS_EJEMPLO)] };
-}
+export const leerConfig = () => llamar('panelConfig');
 export const leerCompras = mes => llamar('panelCompras', { params: { mes } });
 export const leerLiquidacion = mes => llamar('panelLiquidacion', { params: { mes } });
 export const leerCostes = (desde, hasta) => llamar('panelCostes', { params: { desde, hasta } });
@@ -225,7 +212,7 @@ function crearDemo() {
   const finP = diaAntes(`${M}-01`);
   return {
     tecnicos: [
-      { id: 'T01', nombre: 'Antonio Ruiz', rol: 'Instalador', grupo: null, alta: `${A}-01-01`, baja: null },
+      { id: 'T01', nombre: 'Antonio Ruiz', rol: 'Instalador', grupo: null, alta: null, baja: null },
       { id: 'T02', nombre: 'Lucía Pérez', rol: 'Instalador', grupo: null, alta: `${A}-02-01`, baja: null },
       { id: 'T03', nombre: 'Javier Gómez', rol: 'Instalador', grupo: null, alta: `${A}-04-01`, baja: null },
       { id: 'T04', nombre: 'María López', rol: 'Instalador', grupo: null, alta: `${A}-05-01`, baja: null },
@@ -234,27 +221,36 @@ function crearDemo() {
       { id: 'T07', nombre: 'Carmen Vidal', rol: 'Gerencia', grupo: null, alta: `${A}-01-01`, baja: null },
     ],
     vehiculos: [
-      { matricula: '1111AAA', modelo: 'Renault Kangoo', brigada: 'Búfala 1', rentingMes: 495.87, desde: `${A}-01-01`, hasta: null },
-      { matricula: '2222BBB', modelo: 'Citroën Berlingo', brigada: 'Búfala 2', rentingMes: 470, desde: `${A}-01-01`, hasta: null },
-      { matricula: '3333CCC', modelo: 'Ford Transit', brigada: 'Búfala 3', rentingMes: 520, desde: `${A}-03-01`, hasta: null },
-      { matricula: '4444DDD', modelo: 'Toyota Corolla', brigada: 'Gerencia', rentingMes: 410, desde: `${A}-01-01`, hasta: null },
+      { matricula: '1111AAA', sinMatricula: false, modelo: 'Renault Kangoo', brigada: 'Búfala 1', rentingMes: 495.87, desde: null, hasta: null },
+      { matricula: '2222BBB', sinMatricula: false, modelo: 'Citroën Berlingo', brigada: 'Búfala 2', rentingMes: 470, desde: null, hasta: null },
+      { matricula: '3333CCC', sinMatricula: false, modelo: 'Ford Transit', brigada: 'Búfala 3', rentingMes: 520, desde: `${A}-03-01`, hasta: null },
+      { matricula: '4444DDD', sinMatricula: false, modelo: 'Toyota Corolla', brigada: 'Gerencia', rentingMes: 410, desde: `${A}-06-01`, hasta: null },
+      { matricula: 'REC-017', sinMatricula: true, modelo: 'Furgoneta SAT', brigada: 'SAT', rentingMes: 350, desde: null, hasta: null },
     ],
     unidades: [
-      { id: 'U1', nombre: 'Búfala 1', tipo: 'instalacion', activa: true },
-      { id: 'U2', nombre: 'Búfala 2', tipo: 'instalacion', activa: true },
-      { id: 'U3', nombre: 'Búfala 3', tipo: 'instalacion', activa: true },
-      { id: 'U4', nombre: 'SAT', tipo: 'no_productiva', activa: true },
-      { id: 'U5', nombre: 'Estructura', tipo: 'no_productiva', activa: true },
+      // Los id son los nombres de brigada de la hoja (cadenas opacas); nombre es solo para mostrar
+      { id: 'Búfala 1', nombre: 'Búfala 1', tipo: 'productiva', computaVariable: true, activa: true },
+      { id: 'Búfala 2', nombre: 'Búfala 2', tipo: 'productiva', computaVariable: true, activa: true },
+      { id: 'Búfala 3', nombre: 'Búfala 3', tipo: 'productiva', computaVariable: true, activa: true },
+      { id: 'Gerencia', nombre: 'Estructura', tipo: 'no_productiva', computaVariable: false, activa: true },
+      { id: 'SAT', nombre: 'SAT', tipo: 'no_productiva', computaVariable: false, activa: true },
     ],
     asignaciones: [
-      { idTec: 'T01', idUnidad: 'U1', matricula: '1111AAA', desde: `${A}-01-01`, hasta: finP },
-      { idTec: 'T06', idUnidad: 'U1', matricula: '1111AAA', desde: `${A}-01-01`, hasta: finP },
-      { idTec: 'T01', idUnidad: 'U1', matricula: '1111AAA', desde: `${M}-01`, hasta: null },
-      { idTec: 'T02', idUnidad: 'U1', matricula: '1111AAA', desde: `${M}-01`, hasta: null },
-      { idTec: 'T03', idUnidad: 'U2', matricula: '2222BBB', desde: `${M}-01`, hasta: null },
+      { idTec: 'T01', idUnidad: 'Búfala 1', matricula: null, desde: null, hasta: finP },
+      { idTec: 'T06', idUnidad: 'Búfala 1', matricula: null, desde: null, hasta: finP },
+      { idTec: 'T01', idUnidad: 'Búfala 1', matricula: null, desde: `${M}-01`, hasta: null },
+      { idTec: 'T02', idUnidad: 'Búfala 1', matricula: null, desde: `${M}-01`, hasta: null },
+      { idTec: 'T03', idUnidad: 'Búfala 2', matricula: null, desde: `${M}-01`, hasta: null },
+      { idTec: 'T05', idUnidad: 'SAT', matricula: null, desde: null, hasta: null },
+      { idTec: 'T07', idUnidad: 'Gerencia', matricula: null, desde: null, hasta: null },
+      // Vínculo vehículo → unidad deducido del recurso (derivada: true)
+      { idTec: null, idUnidad: 'Búfala 1', matricula: '1111AAA', desde: null, hasta: null, derivada: true },
+      { idTec: null, idUnidad: 'Búfala 2', matricula: '2222BBB', desde: null, hasta: null, derivada: true },
+      { idTec: null, idUnidad: 'SAT', matricula: 'REC-017', desde: null, hasta: null, derivada: true },
+      { idTec: null, idUnidad: 'Gerencia', matricula: '4444DDD', desde: null, hasta: null, derivada: true },
     ],
     tramos: [],   // llega vacío hasta que exista el motor de liquidación
-    ejercicio: { anio: Number(A), jornadaAnual: 1748 },
+    ejercicio: { anio: Number(A), jornadaAnual: 1770 },
     limites: { tecnicosPorUnidad: 2 },
     // Forma de BACKEND.md: objetos { valor, etiqueta }, sin sinClasificar
     tiposProveedor: [
@@ -295,7 +291,9 @@ function demoLiquidacion(mes) {
   const costes = demo.costes[mes] || {};
   const ejemplo = [[18, 8420.5, 2110.3, 312.4, 'más de 3.000', 75], [15, 7300, 1850, 312.4, '2.500–3.000', 50],
     [12, 6100.25, 1600, 290, '2.000–2.500', 30], [9, 4200, 1100, 290, 'menos de 2.000', 0], [7, 3500, 900, 0, 'menos de 2.000', 0]];
-  const filas = demo.tecnicos.filter(t => vigMes(t.alta, t.baja, mes)).map((t, i) => {
+  const diaRef = finMes < hoyIso() ? finMes : hoyIso();
+  const computa = t => { const a = demo.asignaciones.find(x => x.idTec === t.id && vig(x.desde, x.hasta, diaRef)); return !a || demo.unidades.find(u => u.id === a.idUnidad)?.computaVariable !== false; };
+  const filas = demo.tecnicos.filter(t => vigMes(t.alta, t.baja, mes) && computa(t)).map((t, i) => {
     const [obras, ingresos, material, costeVeh, tramo, importe] = ejemplo[i % ejemplo.length];
     const real = costes[t.id];
     const costeTec = real ?? 2450;
@@ -331,7 +329,11 @@ function demoResponder(accion, params, p) {
       const siguiente = (lista, pref, cifras) => pref + String(Math.max(0, ...lista.map(x => Number(String(x.id).replace(/\D/g, '')) || 0)) + 1).padStart(cifras, '0');
       for (const t of p.tecnicos || []) { if (!t.id) { t.id = siguiente(demo.tecnicos, 'T', 2); asignados.tecnicos.push(t.id); } poner(demo.tecnicos, 'id', t); }
       (p.vehiculos || []).forEach(v => poner(demo.vehiculos, 'matricula', v));
-      for (const u of p.unidades || []) { if (!u.id) { u.id = siguiente(demo.unidades, 'U', 1); asignados.unidades.push(u.id); } poner(demo.unidades, 'id', u); }
+      // Como el backend, el id de una unidad nueva es su nombre (sin repetir)
+      for (const u of p.unidades || []) {
+        if (!u.id) { let id = u.nombre, n = 2; while (demo.unidades.some(x => x.id === id)) id = `${u.nombre} (${n++})`; u.id = id; asignados.unidades.push(id); }
+        poner(demo.unidades, 'id', { tipo: 'productiva', computaVariable: true, ...u });
+      }
       for (const a of nuevas) {
         for (const v of demo.asignaciones) {
           const mismo = a.idTec ? v.idTec === a.idTec : (!v.idTec && v.idUnidad === a.idUnidad);

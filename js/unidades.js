@@ -1,6 +1,6 @@
 // Pantalla de unidades: formar unidades arrastrando técnicos y vehículos.
-import * as api from './api.js?v=6';
-import { esc, fecha, hoy, vigente, avisar, preguntar, cajaError, listaAvisos } from './ui.js?v=6';
+import * as api from './api.js?v=7';
+import { esc, fecha, hoy, vigente, avisar, preguntar, cajaError, listaAvisos } from './ui.js?v=7';
 
 const LIBRE = '__libre__';
 // Solo los técnicos de este rol se pueden asignar a una unidad (panelConfig, v3.20.13).
@@ -168,13 +168,6 @@ export function montar(el) {
   async function guardar() {
     const filas = cambios();
     if (!filas.length) return;
-    // Las unidades de ejemplo (aún no publicadas por el backend) nunca se envían
-    const deEjemplo = [...new Set(filas.filter(f => unidad(f.idUnidad)?.demostracion).map(f => nombreUnidad(f.idUnidad)))];
-    if (deEjemplo.length) {
-      errorGuardado = Object.assign(new Error(`«${deEjemplo.join('», «')}» ${deEjemplo.length === 1 ? 'es una unidad' : 'son unidades'} de ejemplo hasta que el backend las publique. Deshaz los cambios que las tocan para poder guardar el resto.`), { tipo: 'solo-lectura' });
-      pintar();
-      return;
-    }
     guardando = true;
     errorGuardado = null;
     pintar();
@@ -207,6 +200,7 @@ export function montar(el) {
     return `<div class="ficha vehiculo" ${soloLectura() ? '' : 'draggable="true"'} data-tipo="veh" data-id="${esc(mat)}">
       <span class="nombre">${esc(v.matricula)}</span>
       <span class="detalle">${esc(v.modelo || '')}${v.brigada ? ' · ' + esc(v.brigada) : ''}</span>
+      ${v.sinMatricula ? '<span class="insignia aviso" title="El recurso no tiene matrícula legible: se usa su código interno">sin matrícula</span>' : ''}
       ${selectorMover('veh', mat, unidadDeVeh(borrador, mat))}
     </div>`;
   }
@@ -233,11 +227,13 @@ export function montar(el) {
     const libresTec = tecnicosVisibles().filter(t => !asignadosTec.has(t.id));
     const otros = noAsignables();
     const libresVeh = vehiculosVisibles().filter(v => !asignadosVeh.has(v.matricula));
-    const primerRegistro = cfg.asignaciones.reduce((m, a) => (!m || (a.desde && a.desde < m) ? a.desde : m), null);
+    // Primer día con composición registrada. Si alguna asignación vale «desde siempre» (desde: null), no hay límite.
+    const primerRegistro = cfg.asignaciones.some(a => !a.desde) ? null
+      : cfg.asignaciones.reduce((m, a) => (!m || a.desde < m ? a.desde : m), null);
     const tarjeta = ([u, c]) => `
               <article class="unidad ${!lectura && unidadCambiada(u) ? 'cambiada' : ''} ${esNoProductiva(unidad(u)) ? 'no-productiva' : ''}">
                 <header><h3>${esc(nombreUnidad(u))}</h3>
-                  ${unidad(u)?.demostracion ? '<span class="insignia sugerido" title="El backend aún no publica esta unidad">ejemplo</span>' : ''}
+                  ${unidad(u)?.computaVariable === false ? '<span class="insignia" title="Esta unidad y sus técnicos quedan fuera del cálculo del variable">no computa variable</span>' : ''}
                   <span class="insignia">${c.tecs.length === 0 ? 'sin técnicos' : c.tecs.length === 1 ? '1 técnico' : c.tecs.length + ' técnicos'}</span></header>
                 ${c.choques.length ? `<p class="insignia error">Dato incoherente en el servidor: ${esc(c.choques.join('; '))}</p>` : ''}
                 <div class="hueco" data-unidad="${esc(u)}" data-acepta="tec">

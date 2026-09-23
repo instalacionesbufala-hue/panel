@@ -1,16 +1,23 @@
 // Liquidación mensual: solo lectura. El cálculo lo hace el backend; aquí solo se muestra.
-import * as api from './api.js?v=6';
-import { esc, eur, mesActual, nombreMes, cajaError, selectorMes } from './ui.js?v=6';
+import * as api from './api.js?v=7';
+import { esc, eur, mesActual, nombreMes, cajaError, selectorMes } from './ui.js?v=7';
 
 export function montar(el) {
   let mes = mesActual();
-  let liq = null, errorCarga = null, cargando = false;
+  let liq = null, unidades = null, errorCarga = null, cargando = false;
 
   async function recargar() {
     errorCarga = null; cargando = true; pintar();
-    try { liq = await api.leerLiquidacion(mes); } catch (e) { errorCarga = e; }
+    // La configuración solo hace falta para saber qué unidades no computan variable
+    const [l, c] = await Promise.allSettled([api.leerLiquidacion(mes), api.leerConfig()]);
+    if (l.status === 'fulfilled') liq = l.value; else errorCarga = l.reason;
+    unidades = c.status === 'fulfilled' ? c.value.unidades : null;
     cargando = false; pintar();
   }
+
+  // computaVariable: false ⇒ la unidad y sus técnicos quedan fuera del variable (BACKEND.md).
+  // El backend no debería mandar esas filas; si llegan, se apartan y no se muestran como reparto.
+  const fueraDelVariable = f => (unidades || []).some(u => u.computaVariable === false && (u.id === f.unidad || u.nombre === f.unidad));
 
   function pintar() {
     const cabecera = `<div class="barra">
@@ -21,6 +28,8 @@ export function montar(el) {
     if (errorCarga) { el.innerHTML = cabecera + cajaError(errorCarga, 'No se ha podido cargar la liquidación') + '<button class="boton" data-accion="recargar">Reintentar</button>'; return; }
     if (!liq) return;
     const exc = liq.excepciones || [];
+    const filas = liq.filas.filter(f => !fueraDelVariable(f));
+    const apartadas = liq.filas.length - filas.length;
     const cerrado = String(liq.estado || '').toLowerCase() === 'cerrado';
 
     el.innerHTML = cabecera + `
@@ -39,7 +48,7 @@ export function montar(el) {
           <th>Técnico</th><th>Unidad</th><th class="num">Obras</th><th class="num">Ingresos</th><th class="num">Material</th>
           <th class="num">Coste técnico</th><th class="num">Coste vehículo</th><th class="num">Margen</th><th>Tramo</th><th class="num">Variable</th>
         </tr></thead>
-        <tbody>${liq.filas.map(f => `<tr>
+        <tbody>${filas.map(f => `<tr>
           <td><strong>${esc(f.nombre)}</strong> <span class="tenue">${esc(f.idTec)}</span></td>
           <td>${esc(f.unidad || '—')}</td>
           <td class="num">${esc(f.obras ?? '—')}</td>
@@ -52,7 +61,9 @@ export function montar(el) {
           <td class="num"><strong>${eur(f.importe)}</strong></td>
         </tr>`).join('') || '<tr><td colspan="10" class="vacio">No hay datos para este mes.</td></tr>'}</tbody>
         <tfoot><tr><td colspan="9">Total variable del mes</td><td class="num">${eur(liq.total)}</td></tr></tfoot>
-      </table></div>`;
+      </table></div>
+      ${apartadas ? `<div class="caja-aviso">Se han apartado ${apartadas} fila${apartadas === 1 ? '' : 's'} de unidades que no computan variable (SAT, Estructura): no forman parte del reparto. El total es el que manda el servidor; si las incluye, hay que avisar al backend.</div>` : ''}
+      ${unidades ? '' : '<p class="tenue">No se ha podido leer la configuración: no se comprueba qué unidades computan variable.</p>'}`;
   }
 
   function alCambiar(ev) {

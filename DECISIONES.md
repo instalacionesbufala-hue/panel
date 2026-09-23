@@ -1,49 +1,25 @@
 # Decisiones del panel y dudas para el backend
 
-**El contrato vive en [`BACKEND.md`](BACKEND.md)**, lo mantiene el backend y manda sobre este fichero. Aquí queda lo que decide el panel por su cuenta y lo que el panel pregunta. Revisado contra BACKEND.md (v3.20.12) y contra el mensaje del backend sobre `panelConfig` (v3.20.13+) el 23/09/2026. Mientras BACKEND.md no recoja ese mensaje, el panel sigue el mensaje.
-
-## Prueba de `panelConfig` en producción (23/09/2026, backend v3.20.14)
-
-Prueba de solo lectura de las pantallas Unidades y Técnicos y vehículos. Salieron `ping`, `panelLogin` y `panelConfig`. No se guardó nada: `panelGuardarConfig` aún no está en `accionesPanel`, así que el panel bloquea los guardados («Aún no se puede guardar»).
-
-**Encaja:**
-- Técnicos `E01…E09` con `rol`, y `grupo` a `null`.
-- Unidades `U1…U3`, 2 técnicos y 1 vehículo en cada una desde el 01/09/2026.
-- `limites.tecnicosPorUnidad = 2`, que el panel aplica al soltar.
-- `tramos` vacío y `ejercicio` sin `diasEfectivos`.
-- Sin testigo, `{ ok:false, codigo:"sesion" }`.
-- La `brigada` de cada vehículo coincide hoy con las asignaciones.
-- SAT (E05) y Gerencia (E06) no aparecen como asignables. La baja de E07 no aparece.
-
-**No encaja, o hay que decidirlo** (ver dudas 2 a 5).
+**El contrato vive en [`BACKEND.md`](BACKEND.md)**, lo mantiene el backend y manda sobre este fichero. Aquí queda lo que decide el panel por su cuenta y lo que el panel pregunta. Revisado contra BACKEND.md **v3.20.15** (`Panel_Config.gs` v1.1) el 23/09/2026.
 
 ## Dudas abiertas para el backend
 
-1. **`panelConfig` ya está en producción, pero `panelGuardarConfig` no.** Como estaba previsto, el panel bloquea esa escritura: Unidades y Técnicos y vehículos son de solo consulta hasta que llegue `panelGuardarConfig`. Lo mismo pasará con las parejas `panelCompras` ↔ `panelAsignarCombustible` / `panelClasificarProveedor` y `panelCostes` ↔ `panelCostesTecnico` si salen por separado.
-2. **El vehículo de Gerencia (`9409LVM`, `brigada: "Gerencia"`) sale en «Vehículos sin asignar» y se puede meter en una brigada.** ¿Debe quedar fuera de las unidades? Si es así, ¿con qué dato lo distingo? Propuesta: un campo explícito, `vehiculos[].asignable: false`, antes que deducirlo del texto de `brigada`.
-3. **`brigada` frente a `asignaciones`.** Las dos dicen en qué unidad está hoy el vehículo. El panel usa `asignaciones`, porque tienen vigencia, y muestra `brigada` solo como dato informativo. ¿`brigada` se calcula a partir de las asignaciones, o es un dato aparte que podría no coincidir? Si es aparte, ¿cuál manda?
-4. **No hay composición registrada antes del 01/09/2026.** Al consultar un día anterior, las tres brigadas salen vacías. El panel avisa: «El servidor no tiene registrada ninguna composición antes del 01/09/2026». ¿Se va a cargar el histórico anterior, o ese es el punto de partida?
-5. **Dos vehículos con `desde: null`** (`2690NKC` y `4299NGK`). El panel lo trata como «en servicio desde siempre». ¿Es correcto, o falta la fecha?
+1. **`panelConfig` está en producción, pero `panelGuardarConfig` no.** Como estaba previsto, el panel bloquea esa escritura: Unidades y Técnicos y vehículos son de solo consulta hasta que llegue `panelGuardarConfig`.
+2. **Cómo se envía el vehículo al guardar, ahora que hay asignaciones `derivada`.** El panel envía una fila por técnico que cambia, con la matrícula del vehículo de su unidad (`{ idTec, idUnidad, matricula, desde }`). Solo cuando una unidad se queda sin técnicos envía la fila del vehículo solo (`{ idTec: null, idUnidad, matricula, desde }`). Si cambia el vehículo de una unidad con técnicos, no envía fila de vehículo aparte: se deduce de las filas de sus técnicos. ¿Es el formato que va a leer `panelGuardarConfig`, o preferís una fila de vehículo explícita siempre que el vehículo cambie?
+3. **¿Qué roles puede recibir cada unidad?** Hoy el panel solo deja asignar técnicos con rol `Instalador`, también en SAT y Estructura, como se pidió («igual que las demás»). Con esa regla no se puede pasar desde el panel al técnico de rol SAT a la unidad SAT, ni al de Gerencia a Estructura. Si el backend ya los manda asignados ahí, se ven bien. BACKEND.md menciona también el rol `Jefe`. Preguntas:
+   - ¿Pueden las no productivas recibir los roles SAT y Gerencia?
+   - ¿Puede un `Jefe` ir en una brigada?
+4. **Alta de unidades.** El formulario «Nueva unidad» solo envía `nombre`. ¿Debe pedir también `tipo` y `computaVariable`? Y como el id de una unidad es su nombre en la hoja, ¿qué pasa si se da de alta una con un nombre que ya existe?
+5. **`panelLiquidacion.filas[].unidad`: ¿id o nombre?** Para apartar las unidades que no computan variable, el panel compara con los dos (`Gerencia` y `Estructura`). Bastaría con saber cuál llega.
 
-## Unidades no productivas (`unidades[].tipo`), anunciado y aún no publicado
+## Resueltas por BACKEND.md v3.20.15
 
-Lo que hace el panel desde el 23/09/2026:
-- **Mientras `panelConfig` no traiga `tipo`**, el panel marca U1 a U3 como `instalacion` y añade dos unidades de ejemplo: `NP-SAT` («SAT») y `NP-EST` («Estructura»), con `tipo: "no_productiva"` y la marca **«ejemplo»**. En cuanto el backend publique el campo, esto deja de hacerse solo.
-- Las no productivas se pintan en una zona aparte, «No productivas», **sin `limites.tecnicosPorUnidad`**. Aceptan técnicos y vehículos igual que las brigadas.
-- **Las unidades de ejemplo nunca se envían al backend.** Si un cambio toca una de ellas, el panel no guarda y lo explica.
-
-Dudas:
-
-6. **¿Qué roles puede recibir una unidad no productiva?** Hoy solo se asignan técnicos con rol `Instalador`, también en SAT y Estructura, tal como se pidió («igual que las demás»). Con esa regla, el técnico de rol SAT (E05) no se puede poner en la unidad SAT. ¿Deben las no productivas aceptar también los roles SAT y Gerencia?
-7. **Identificadores y nombres** de las unidades SAT y Estructura cuando se publiquen. El panel no depende de ellos; es solo para cotejar.
-8. **Alta de unidades:** ¿el formulario de «Nueva unidad» debe pedir el `tipo`? Hoy no lo envía.
-
-## Resueltas por BACKEND.md (23/09/2026)
-
-- `ids: { tecnicos, unidades }` en la respuesta de `panelGuardarConfig`. El panel ya lo lee y muestra los identificadores asignados.
-- Forma de `panelCostes`: lista plana `costes: [{ mes, idTec, costeEmpresaMes, origen }]`. Es la que ya usa el panel.
-- `tiposProveedor`: objetos `{ valor, etiqueta }`, sin `sinClasificar`. El panel ya los muestra con su etiqueta; la demostración usa esa forma.
-- Acciones en producción según `ping.accionesPanel`. Hecho: ya no hay lista fija en el código.
+- **Vehículo de Gerencia.** Pertenece a la unidad `Gerencia` («Estructura») por su asignación `derivada`. Ya no sale como libre.
+- **`brigada` frente a `asignaciones`.** El vínculo vehículo → unidad llega como asignación `derivada: true`. El panel usa las asignaciones y muestra `brigada` solo como dato.
+- **Fechas `null`.** `desde: null` significa «desde siempre». Por eso ya no hay «hueco» antes del 01/09/2026: el aviso de «sin composición registrada» solo sale si ninguna asignación vale desde siempre.
+- **Unidades no productivas publicadas** (`tipo: "productiva" | "no_productiva"`). Se han quitado las unidades de ejemplo que el panel añadía mientras tanto.
+- **Los ids de unidad son cadenas opacas** («Búfala 1», «SAT», «Gerencia»). El panel no supone ningún formato; siempre muestra `nombre` y trabaja con `id`.
+- **`ids` en las altas**, **forma de `panelCostes`**, **`tiposProveedor` como `{ valor, etiqueta }`** y **acciones según `ping.accionesPanel`**: hecho.
 
 ## Decisiones del panel
 
@@ -63,6 +39,13 @@ Dudas:
 
 Si una va a producción y la otra no, la escritura se bloquea y no se envía nada. Así nunca se guarda en la demostración algo leído del sistema real, ni se manda al sistema real algo leído de la demostración.
 
+**Unidades.**
+- Las brigadas (`productiva`) y las no productivas se pintan en zonas separadas.
+- `limites.tecnicosPorUnidad` no se aplica a las no productivas.
+- Las unidades con `computaVariable: false` llevan la marca «no computa variable». En Liquidación, si llegara alguna fila suya, se aparta con un aviso y no se muestra como reparto. El total es siempre el que manda el servidor: el panel no suma.
+- Los vehículos `sinMatricula: true` se muestran con el aviso «sin matrícula».
+- Si un técnico no trae `rol` (datos antiguos), se considera asignable.
+
 **Respuestas del backend.**
 - `rechazado:true`: se muestra el error del servidor, sin reintentar.
 - `bloqueado:true`: se muestra en la pantalla de acceso.
@@ -73,8 +56,14 @@ Si una va a producción y la otra no, la escritura se bloquea y no se envía nad
 - JavaScript nativo, sin bibliotecas. El arrastre usa la API de HTML5, con un desplegable «Mover a…» para pantallas táctiles.
 - Los borradores solo viven en memoria: no se guardan en el navegador porque incluyen importes salariales.
 - El panel no calcula el variable: muestra lo que manda `panelLiquidacion`.
-- Una unidad de un técnico es normal y no se avisa. El máximo por unidad sale de `limites.tecnicosPorUnidad` y se comprueba al soltar.
+- Una unidad de un técnico es normal y no se avisa.
 - El histórico de costes marca cada mes como «coste real» si todos los técnicos activos tienen `origen === "gestoria"`, o como «estimación (x de y reales)».
+- Versión única `?v=N` en `index.html` y en todos los `import` (`node subir-version.mjs`), para que la caché no mezcle ficheros de dos versiones.
 - Con `file://` los módulos no cargan; en GitHub Pages o con un servidor estático, sí.
 
-**Desarrollo.** Nunca se llama a producción mientras se desarrolla. Las pruebas se hacen con un simulador local que sirve el panel con la URL del backend cambiada a `localhost`.
+**Desarrollo.** Nunca se llama a producción mientras se desarrolla, salvo las pruebas que pida el backend y solo con las acciones de `accionesPanel`. El resto se prueba con un simulador local que sirve el panel con la URL del backend cambiada a `localhost`.
+
+## Historial
+
+- **23/09/2026 · prueba de `panelConfig` en producción (v3.20.14).** Fue una prueba de solo lectura. Salieron `ping`, `panelLogin` y `panelConfig`, y no se guardó nada. Encajaron los técnicos con `rol`, las tres brigadas, el límite de 2 y la respuesta `codigo:"sesion"`. Las dudas que dejó las resolvió la v3.20.15.
+- **22/09/2026 · incidente de la cola de cierres (cerrado).** Siete POST de prueba se encolaron como cierres de obra en la v3.20.7. Desde la v3.20.8, el backend rechaza las peticiones vacías y las acciones desconocidas.

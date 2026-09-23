@@ -128,7 +128,7 @@ Sale de `💳 Compras Holded` (sincronizada con Holded cada noche, 180 días de 
 
 No solo combustible: también `vehiculo` (renting y mantenimiento). La matrícula tiene que existir en `vehiculos` de `panelConfig`; si no, se rechaza esa fila con un aviso y el resto se guarda. `matricula: null` quita el vehículo.
 
-Los rentings se rellenan solos en el backend: Leasys (las dos Opel Vivaro) y las líneas de renting de las facturas de ESMOVE (Peugeot Partner y T-Cross) llevan la matrícula en el texto. Una factura con **varias** matrículas no se asigna sola: el backend la deja sin matrícula y avisa. El panel no tiene que hacer nada especial.
+Los rentings se rellenan solos en el backend. La factura mensual de Leasys trae **las dos Opel Vivaro en un solo documento**: el backend lee su PDF y la **reparte en una fila por matrícula**, cada una con su importe (la original conserva su `id`; las demás llevan `id` terminado en `#mat:MATRÍCULA`). Solo reparte si los bloques suman exactamente la base de la factura. Las líneas de renting de las facturas de ESMOVE (Peugeot Partner y T-Cross) llevan la matrícula en el texto y se asignan igual. Para el panel son facturas normales: no tiene que hacer nada especial.
 
 ## Costes — `panelCostes`
 

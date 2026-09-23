@@ -1,22 +1,18 @@
 # Decisiones del panel y dudas para el backend
 
-**El contrato vive en [`BACKEND.md`](BACKEND.md)**, lo mantiene el backend y manda sobre este fichero. Aquí queda lo que decide el panel por su cuenta y lo que el panel pregunta. Revisado contra BACKEND.md **v3.20.15** (`Panel_Config.gs` v1.1) el 23/09/2026.
+**El contrato vive en [`BACKEND.md`](BACKEND.md)**, lo mantiene el backend y manda sobre este fichero. Aquí queda lo que decide el panel por su cuenta y lo que el panel pregunta. Revisado contra BACKEND.md **v3.20.18** (`Panel_Config.gs` v1.3) el 23/09/2026.
 
-## ⚠️ Fallo en producción (23/09/2026, backend v3.20.16)
+## Peticiones de una en una — hecho (v3.20.18)
 
-**`panelConfig` con testigo no responde JSON.** Desde el panel en GitHub Pages, con una sesión válida, todas las pantallas que leen la configuración muestran que el servidor no ha respondido JSON. Comprobado con `curl`, sin tocar nada:
+**Rectificación:** el fallo del 23/09 que atribuí a la comprobación del testigo no era eso. Era lo que explica BACKEND.md v3.20.18: Apps Script serializa las ejecuciones de un mismo usuario. Mi `curl` con testigo inventado coincidió con peticiones del panel en curso y quedó en cola.
 
-| Petición | Resultado |
-|---|---|
-| `GET ?action=ping` | 200 · JSON · 4,7 s |
-| `GET ?action=panelConfig` (sin testigo) | 200 · JSON `codigo:"sesion"` · 2,0 s |
-| `GET ?action=panelConfig&token=invalido` | **404 · HTML de Google «Página no encontrada» / «Drive: No se puede abrir el archivo en estos momentos» · 33,8 s** |
+**Encargo hecho:** todas las peticiones a producción pasan por una cola en `js/api.js` y salen **de una en una**: `ping`, `panelLogin`, `panelConfig` y cualquier acción futura. Cubre `combustible.js` y `costes.js` sin tocar las pantallas, y también la Liquidación, que lee la configuración a la vez que la liquidación. Las peticiones de demostración no salen del navegador y no usan la cola.
 
-Con **cualquier** testigo en la URL, aunque sea inventado, la ejecución tarda unos 30 s y Google la corta con su página de error. Un testigo inválido debería devolver `codigo:"sesion"` al momento. Todo apunta a la comprobación del testigo, o a lo que se hace justo después. Con la v3.20.14 (09:15 UTC) la misma lectura funcionaba, en unos 4–5 s.
+Comprobado con un simulador local que cuenta las peticiones simultáneas: tres lecturas lanzadas a la vez desde el panel llegan de una en una (máximo 1). Las mismas tres lanzadas a mano, sin la cola, llegan a la vez (máximo 3).
 
-Lo que hace ahora el panel ante esto: muestra el mensaje de la página de error de Google y cuánto ha tardado, e invita a reintentar.
+Además, el panel guarda en memoria una copia de `panelConfig` durante 10 minutos, o hasta guardar. Se suma a la caché del backend (`cache: true`). El panel no envía `&nocache=1`: tras `panelGuardarConfig` la caché del backend se invalida sola, y la del panel también.
 
-**Velocidad.** Aunque funcione, `panelConfig` tarda varios segundos. El panel ya guarda en memoria una copia durante la sesión (10 min, o hasta guardar), así que solo espera en la primera pantalla. Propuesta para el backend: calcular el JSON de `panelConfig` y guardarlo en `CacheService`, invalidándolo cuando cambien las tablas, como ya se hace con el dashboard (`dashGen`). Así respondería en menos de un segundo, sin sacar los datos de Google.
+**Aviso sobre BACKEND.md:** el fichero tiene el contenido duplicado. Arriba está la v3.20.18 y, debajo, la v3.20.16 entera desde su título. El panel sigue la de arriba.
 
 ## Dudas abiertas para el backend
 

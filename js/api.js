@@ -76,10 +76,25 @@ function esSesionCaducada(r) {
   return c === 'sesion' || c === 'sesion_caducada' || r.sesionCaducada === true;
 }
 
-async function aProduccion(accion, { metodo = 'GET', params = {}, cuerpo = null, conTestigo = true } = {}) {
+// Apps Script atiende una sola ejecución a la vez por usuario: las peticiones simultáneas se
+// encolan en Google y la última puede pasarse de tiempo (BACKEND.md v3.20.18). Por eso todas las
+// peticiones a producción pasan por esta cola y salen de una en una. La demostración no la usa.
+let colaProduccion = Promise.resolve();
+function enCola(tarea) {
+  const turno = colaProduccion.then(tarea, tarea);
+  colaProduccion = turno.catch(() => {});
+  return turno;
+}
+
+async function aProduccion(accion, opciones = {}) {
+  // La comprobación va fuera de la cola: consulta el ping, que también se encola.
   if (accion !== 'ping' && !(await accionesEnProduccion()).has(accion)) {
     throw new ErrorApi(`La acción «${accion}» no figura entre las implementadas en el backend.`, 'contrato');
   }
+  return enCola(() => enviarAProduccion(accion, opciones));
+}
+
+async function enviarAProduccion(accion, { metodo = 'GET', params = {}, cuerpo = null, conTestigo = true } = {}) {
   const url = new URL(URL_BACKEND);
   const token = conTestigo ? testigoActual() : null;
   const opciones = { method: metodo, redirect: 'follow' };

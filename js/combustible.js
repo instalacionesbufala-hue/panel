@@ -1,6 +1,6 @@
 // Pantalla de combustible: asignar cada factura a un vehículo.
-import * as api from './api.js?v=8';
-import { esc, eur, fecha, mesActual, sumarMeses, nombreMes, vigenteEnMes, avisar, cajaError, selectorMes } from './ui.js?v=8';
+import * as api from './api.js?v=9';
+import { esc, eur, fecha, mesActual, sumarMeses, nombreMes, vigenteEnMes, avisar, cajaError, selectorMes } from './ui.js?v=9';
 
 const SIN = '';
 // Los tipos de proveedor los manda el backend en panelCompras.tiposProveedor (texto u objeto { valor, etiqueta })

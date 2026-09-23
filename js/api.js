@@ -126,6 +126,7 @@ async function aProduccion(accion, { metodo = 'GET', params = {}, cuerpo = null,
 
   if (datos && datos.ok === false) {
     if (esSesionCaducada(datos)) throw new ErrorApi(datos.error || 'La sesión ha caducado.', 'sesion');
+    if (datos.rechazado) throw new ErrorApi(datos.error || `El servidor no admite la acción «${accion}».`, 'contrato');
     if (datos.bloqueado) throw new ErrorApi(datos.error || 'Demasiados intentos fallidos: el acceso está bloqueado temporalmente.', 'bloqueado');
     throw new ErrorApi(datos.error || 'El servidor ha rechazado la operación sin indicar el motivo.', 'backend');
   }
@@ -137,8 +138,24 @@ async function aProduccion(accion, { metodo = 'GET', params = {}, cuerpo = null,
   return datos;
 }
 
+// Cada escritura con la lectura de la que depende. Una escritura solo se permite si va por el
+// mismo camino que su lectura: así nunca se guarda en la demostración algo que se ha leído del
+// sistema real, ni se envía al sistema real algo que se ha leído de la demostración.
+const LECTURA_DE = {
+  panelGuardarConfig: 'panelConfig',
+  panelAsignarCombustible: 'panelCompras',
+  panelClasificarProveedor: 'panelCompras',
+  panelCostesTecnico: 'panelCostes',
+};
+
 async function peticion(accion, opciones = {}) {
   const enProduccion = await accionesEnProduccion();
+  const lectura = LECTURA_DE[accion];
+  if (lectura && enProduccion.has(accion) !== enProduccion.has(lectura)) {
+    throw new ErrorApi(enProduccion.has(lectura)
+      ? 'Estos datos ya son los reales, pero el servidor todavía no admite cambios. No se ha guardado nada.'
+      : 'El servidor admite este cambio, pero los datos de pantalla son de ejemplo. No se ha guardado nada.', 'solo-lectura');
+  }
   return enProduccion.has(accion) ? aProduccion(accion, opciones) : demostracion(accion, opciones);
 }
 
@@ -224,7 +241,13 @@ function crearDemo() {
     ],
     ejercicio: { anio: Number(A), jornadaAnual: 1748, diasEfectivos: 227 },
     limites: { tecnicosPorUnidad: 2 },
-    tiposProveedor: ['combustible', 'material', 'vehiculo', 'estructura', 'herramienta', 'mixto', 'ignorar', 'sinClasificar'],
+    // Forma de BACKEND.md: objetos { valor, etiqueta }, sin sinClasificar
+    tiposProveedor: [
+      { valor: 'combustible', etiqueta: 'Combustible' }, { valor: 'material', etiqueta: 'Material' },
+      { valor: 'vehiculo', etiqueta: 'Vehículo' }, { valor: 'estructura', etiqueta: 'Estructura' },
+      { valor: 'herramienta', etiqueta: 'Herramienta' }, { valor: 'mixto', etiqueta: 'Mixto' },
+      { valor: 'ignorar', etiqueta: 'Ignorar' },
+    ],
     facturas: {
       [M]: [
         { id: 'd1', fecha: `${M}-04`, proveedor: 'BALLENOIL SA', tipo: 'combustible', importeSinIva: 82.31, matricula: null, numero: 'F-2026-1234' },

@@ -15,7 +15,7 @@ Al cargar la página, el panel pregunta `GET ?action=ping`. El backend responde 
 
 **No hay que tocar el código del panel** cuando el backend añade una acción: basta con recargar la página. La franja amarilla indica qué acciones van ya al sistema de gestión y desaparece cuando van todas. En las escrituras, el panel exige que la respuesta repita la acción (`"accion": "…"`); si no la repite, no da nada por guardado.
 
-Conviene que el backend active juntas las acciones que se leen y escriben sobre lo mismo (por ejemplo `panelConfig` y `panelGuardarConfig`). Si no, una pantalla podría leer datos reales y guardar en la demostración.
+Si una lectura va a producción y su escritura no (por ejemplo `panelConfig` sin `panelGuardarConfig`), el panel bloquea esa escritura y avisa de que aún no se puede guardar. Así nunca se mezclan datos reales con la demostración.
 
 ## Estructura
 
@@ -30,7 +30,8 @@ js/combustible.js     asignar facturas de combustible a vehículos
 js/costes.js          volcar los costes de la gestoría
 js/tecnicos.js        altas, bajas y edición de técnicos, vehículos y unidades
 js/liquidacion.js     liquidación mensual (solo lectura)
-DECISIONES.md         decisiones tomadas y lo que queda pendiente en el contrato
+BACKEND.md            CONTRATO con el backend (lo mantiene el backend; es la fuente de verdad)
+DECISIONES.md         decisiones del panel y dudas abiertas para el backend
 ```
 
 ## Configurar la URL del backend

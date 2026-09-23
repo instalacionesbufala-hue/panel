@@ -79,7 +79,7 @@ export function preguntar(titulo, cuerpoHtml, { aceptar = 'Aceptar', cancelar = 
 
 // Muestra un error de la API en una caja dentro de la vista
 export const cajaError = (e, titulo = 'No se ha podido completar') =>
-  `<div class="caja-error" role="alert"><strong>${esc(e.tipo === 'red' ? 'Sin conexión' : titulo)}.</strong> ${esc(e.message || e)}</div>`;
+  `<div class="caja-error" role="alert"><strong>${esc(e.tipo === 'red' ? 'Sin conexión' : e.tipo === 'solo-lectura' ? 'Aún no se puede guardar' : titulo)}.</strong> ${esc(e.message || e)}</div>`;
 
 export function listaAvisos(avisos) {
   if (!avisos || !avisos.length) return;

@@ -1,70 +1,48 @@
-# Decisiones y contrato acordado con el backend
+# Decisiones del panel y dudas para el backend
 
-Estado a 23/09/2026. Lo marcado como **acordado** lo ha confirmado el backend. Lo marcado como **por confirmar** es una suposición del panel que hay que validar cuando se implemente la acción.
+**El contrato vive en [`BACKEND.md`](BACKEND.md)**, lo mantiene el backend y manda sobre este fichero. Aquí queda lo que decide el panel por su cuenta y lo que el panel pregunta. Revisado contra BACKEND.md (v3.20.12) el 23/09/2026.
 
-## Qué va a producción
+## Dudas abiertas para el backend
 
-**Acordado (v3.20.12):** al cargar la página, el panel pregunta `GET ?action=ping`, que devuelve `panel: true` y `accionesPanel`. Las acciones de esa lista van a producción; el resto se sirve en **modo demostración**, con datos de ejemplo en memoria y la forma del contrato. Hoy la lista es `["panelLogin"]`.
+1. **¿`panelConfig` y `panelGuardarConfig` saldrán juntas?** BACKEND.md anuncia `panelConfig` como la siguiente y el resto después. Mientras una lectura esté en producción y su escritura no (o al revés), el panel **bloquea esa escritura** y muestra «Aún no se puede guardar» (ver «Lecturas y escrituras emparejadas»). Si `panelConfig` sale sola, las pantallas Unidades y Técnicos y vehículos serán de solo consulta hasta que llegue `panelGuardarConfig`. ¿Es lo que queréis, o preferís publicarlas juntas? Lo mismo vale para las parejas `panelCompras` ↔ `panelAsignarCombustible` / `panelClasificarProveedor` y `panelCostes` ↔ `panelCostesTecnico`.
 
-- Solo se tienen en cuenta los nombres que el panel conoce. Si `panel` no es `true` o no llega la lista, todo va a la demostración y no se puede entrar.
+## Resueltas por BACKEND.md (23/09/2026)
+
+- `ids: { tecnicos, unidades }` en la respuesta de `panelGuardarConfig`. El panel ya lo lee y muestra los identificadores asignados.
+- Forma de `panelCostes`: lista plana `costes: [{ mes, idTec, costeEmpresaMes, origen }]`. Es la que ya usa el panel.
+- `tiposProveedor`: objetos `{ valor, etiqueta }`, sin `sinClasificar`. El panel ya los muestra con su etiqueta; la demostración usa esa forma.
+- Acciones en producción según `ping.accionesPanel`. Hecho: ya no hay lista fija en el código.
+
+## Decisiones del panel
+
+**Qué va a producción.** Al cargar la página, el panel pregunta `GET ?action=ping`:
+- Si `panel` no es `true` o no llega `accionesPanel`, no se hace ningún POST y no se puede entrar.
+- Solo se tienen en cuenta los nombres de acción que el panel conoce.
 - El acceso nunca se simula.
-- Se pregunta una vez por carga de página. Si falla, se reintenta en la siguiente llamada.
-- Durante el desarrollo no se llama a producción con nada: las pruebas se hacen con un simulador local que sirve el panel con la URL del backend cambiada a `localhost`.
+- Si el `ping` falla, se reintenta en la siguiente llamada.
 
-## 0. Incidente de la cola de cierres (cerrado)
+**Lecturas y escrituras emparejadas.** Cada escritura depende de una lectura:
 
-El 22/09/2026, las pruebas de conexión enviaron 7 POST al backend v3.20.7, que los encoló como cierres de obra (`COLA_20260922_*_SIN_ID.json`). **Resuelto en el backend desde la v3.20.8:** las peticiones vacías y las acciones desconocidas se rechazan sin encolar nada. Los 7 ficheros ya se procesaron sin dejar efectos.
+| Escritura | Lectura |
+|---|---|
+| `panelGuardarConfig` | `panelConfig` |
+| `panelAsignarCombustible`, `panelClasificarProveedor` | `panelCompras` |
+| `panelCostesTecnico` | `panelCostes` |
 
-## 1. Sesión — acordado
+Si una va a producción y la otra no, la escritura se bloquea y no se envía nada. Así nunca se guarda en la demostración algo leído del sistema real, ni se manda al sistema real algo leído de la demostración.
 
-- Acceso: `POST` con `payload={"accion":"panelLogin","clave":"…"}` → `{ ok, token, caduca }` o `{ ok:false, error }`. Tras 5 fallos, `bloqueado:true` durante 15 minutos.
-- Escrituras: la acción va **dentro de `payload`** (`"accion": "…"`) y el testigo como campo `token` del formulario.
-- Lecturas: `?action=…` y el testigo como `token` en la query.
-- Testigo caducado → `{ ok:false, codigo:"sesion" }`. El panel pide la contraseña y repite la operación.
-- Toda respuesta a una escritura repite `accion`. Si no la repite, el panel no da nada por guardado.
+**Respuestas del backend.**
+- `rechazado:true`: se muestra el error del servidor, sin reintentar.
+- `bloqueado:true`: se muestra en la pantalla de acceso.
+- `codigo:"sesion"`: se pide la contraseña y se repite la operación.
+- Una escritura cuya respuesta no repite `accion` no se da por guardada.
 
-## 2. Asignaciones — acordado
-
-- Al guardar, el panel envía una fila por técnico cuya unidad o vehículo cambia (`desde` = fecha de efecto, `hasta: null`). El backend cierra la anterior.
-- Sacar a un técnico de su unidad: `{ idTec, idUnidad: null, matricula: null, desde }`.
-- Unidad con vehículo y sin técnicos: `{ idTec: null, idUnidad, matricula, desde }`; para retirar ese vehículo, la misma fila con `matricula: null`.
-- `hasta` es inclusive; igual `baja` de técnicos y `hasta` de vehículos.
-- `panelConfig` envía `limites.tecnicosPorUnidad`. El panel lo aplica en el momento de soltar. Una unidad de un técnico es normal y no avisa.
-- Sin correcciones retroactivas: los días pasados solo se consultan.
-
-## 3. Unidades y bajas — acordado, con un cambio
-
-- Unidad de baja: `{ id, activa:false, hasta }`. Técnico: `baja`. Vehículo: `hasta`. Nunca se borra nada.
-- **Las altas se envían sin `id`: lo asigna el backend.** El panel ya no propone identificadores. Sí envía la matrícula de los vehículos, porque es su identificador natural.
-- **Por confirmar:** cómo devuelve el backend los identificadores asignados. El panel lee `ids: { tecnicos: ["T07"], unidades: ["U4"] }` en la respuesta de `panelGuardarConfig` y los muestra en el aviso. Si llega con otro nombre, basta con cambiar una línea en `js/tecnicos.js`. Aunque no llegue, el alta funciona igual, porque la lista se vuelve a leer.
-
-## 4. Costes — acordado
-
-- Lectura: `GET ?action=panelCostes&desde=AAAA-MM&hasta=AAAA-MM`. Con una sola llamada salen el mes, el anterior (para las sugerencias) y el histórico de 6 meses. Ya no se usa la liquidación para esto.
-- Coste real ⇔ `origen === "gestoria"`.
-- **Por confirmar:** la forma de la respuesta. El panel espera una lista plana:
-  ```json
-  { "ok": true, "desde": "2026-03", "hasta": "2026-08",
-    "costes": [ { "mes": "2026-08", "idTec": "T01", "costeEmpresaMes": 2579.29, "origen": "gestoria" } ] }
-  ```
-- El histórico marca cada mes como «coste real» si todos los técnicos activos lo tienen, o como «estimación (x de y reales)».
-- CSV opcional: separador `;`, `,` o tabulador; identificador o nombre del técnico e importe. Nada se envía hasta pulsar «Guardar costes».
-
-## 5. Combustible — acordado, con dos correcciones
-
-- **Quitar el vehículo de una factura:** se envía `matricula: null`. En el desplegable aparece «— Quitar vehículo —».
-- **Tipos de proveedor:** ya no están fijos en el código. Salen de `panelCompras.tiposProveedor`, sin `sinClasificar`, que no es una opción para elegir. Hoy son combustible, material, vehiculo, estructura, herramienta, mixto e ignorar.
-- **Por confirmar:** el formato de `tiposProveedor`. El panel acepta texto (`"material"`) y muestra la primera letra en mayúscula («Vehiculo» sale sin tilde). También acepta objetos `{ "valor": "vehiculo", "etiqueta": "Vehículo" }`, que se verían mejor.
-
-## 6. Otras decisiones — acordado
-
-- JavaScript nativo, sin bibliotecas. El arrastre usa la API de HTML5, con un desplegable «Mover a…» como alternativa táctil.
-- Borradores solo en memoria: no se guardan en el navegador porque incluyen importes salariales.
+**Interfaz.**
+- JavaScript nativo, sin bibliotecas. El arrastre usa la API de HTML5, con un desplegable «Mover a…» para pantallas táctiles.
+- Los borradores solo viven en memoria: no se guardan en el navegador porque incluyen importes salariales.
 - El panel no calcula el variable: muestra lo que manda `panelLiquidacion`.
+- Una unidad de un técnico es normal y no se avisa. El máximo por unidad sale de `limites.tecnicosPorUnidad` y se comprueba al soltar.
+- El histórico de costes marca cada mes como «coste real» si todos los técnicos activos tienen `origen === "gestoria"`, o como «estimación (x de y reales)».
 - Con `file://` los módulos no cargan; en GitHub Pages o con un servidor estático, sí.
 
-## Pendiente
-
-1. Backend: implementar `panelConfig`, `panelCompras`, `panelLiquidacion`, `panelCostes`, `panelGuardarConfig`, `panelAsignarCombustible`, `panelClasificarProveedor` y `panelCostesTecnico`.
-2. Confirmar los tres puntos «por confirmar»: `ids` en las altas, la forma de `panelCostes` y el formato de `tiposProveedor`.
-3. Cada acción que el backend añada a `accionesPanel` entra sola. Conviene probarla entonces contra datos reales.
+**Desarrollo.** Nunca se llama a producción mientras se desarrolla. Las pruebas se hacen con un simulador local que sirve el panel con la URL del backend cambiada a `localhost`.

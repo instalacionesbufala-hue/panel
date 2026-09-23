@@ -26,7 +26,8 @@ export function montar(el) {
       try {
         const r = await api.guardarConfig(cambios);
         listaAvisos(r.avisos);
-        avisar('Guardado.');
+        const nuevos = [...(r.ids?.tecnicos || []), ...(r.ids?.unidades || [])];
+        avisar(nuevos.length ? `Guardado. Identificador asignado por el servidor: ${nuevos.join(', ')}.` : 'Guardado.');
         await recargar();
         return true;
       } catch (e) {
@@ -41,20 +42,13 @@ export function montar(el) {
     `<label>${etiqueta}<input type="date" name="${nombre}" value="${esc(valor ?? '')}" ${extra}></label>`;
 
   // ── Técnicos ──
-  const siguienteId = (lista, prefijo, clave = 'id') => {
-    const n = Math.max(0, ...lista.map(x => Number(String(x[clave]).replace(/\D/g, '')) || 0)) + 1;
-    return prefijo + String(n).padStart(2, '0');
-  };
 
   function altaTecnico() {
     return formulario('Alta de técnico',
-      v => campo('id', 'Identificador', v.id, 'required') + campo('nombre', 'Nombre y apellidos', v.nombre, 'required') +
+      v => '<p class="tenue">El identificador lo asigna el servidor al guardar.</p>' + campo('nombre', 'Nombre y apellidos', v.nombre, 'required') +
         campo('grupo', 'Grupo profesional', v.grupo) + campoFecha('alta', 'Fecha de alta', v.alta),
-      { id: siguienteId(cfg.tecnicos, 'T'), alta: hoy() },
-      v => {
-        if (cfg.tecnicos.some(t => t.id.toLowerCase() === v.id.trim().toLowerCase())) return `Ya existe un técnico con el identificador ${v.id}.`;
-        return { tecnicos: [{ id: v.id.trim(), nombre: v.nombre.trim(), grupo: v.grupo.trim(), alta: v.alta, baja: null }] };
-      }, 'Dar de alta');
+      { alta: hoy() },
+      v => ({ tecnicos: [{ nombre: v.nombre.trim(), grupo: v.grupo.trim(), alta: v.alta, baja: null }] }), 'Dar de alta');
   }
   function editarTecnico(t) {
     return formulario(`Editar ${t.nombre}`,
@@ -108,12 +102,9 @@ export function montar(el) {
   // ── Unidades ──
   function altaUnidad() {
     return formulario('Nueva unidad',
-      v => campo('id', 'Identificador', v.id, 'required') + campo('nombre', 'Nombre', v.nombre, 'required'),
-      { id: siguienteId(cfg.unidades, 'U').replace(/^U0/, 'U'), nombre: `Búfala ${cfg.unidades.length + 1}` },
-      v => {
-        if (cfg.unidades.some(u => u.id.toLowerCase() === v.id.trim().toLowerCase())) return `Ya existe una unidad con el identificador ${v.id}.`;
-        return { unidades: [{ id: v.id.trim(), nombre: v.nombre.trim(), activa: true }] };
-      }, 'Crear');
+      v => '<p class="tenue">El identificador lo asigna el servidor al guardar.</p>' + campo('nombre', 'Nombre', v.nombre, 'required'),
+      { nombre: `Búfala ${cfg.unidades.length + 1}` },
+      v => ({ unidades: [{ nombre: v.nombre.trim(), activa: true }] }), 'Crear');
   }
   function editarUnidad(u) {
     return formulario(`Renombrar ${u.nombre}`, v => campo('nombre', 'Nombre', v.nombre, 'required'), { nombre: u.nombre },

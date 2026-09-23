@@ -1,6 +1,6 @@
 // Pantalla de costes de personal: volcar el coste de empresa que entrega la gestoría.
 import * as api from './api.js';
-import { esc, eur, mesActual, sumarMeses, nombreMes, vigenteEnMes, leerImporte, importeEditable, avisar, cajaError, selectorMes } from './ui.js';
+import { esc, mesActual, sumarMeses, nombreMes, vigenteEnMes, leerImporte, importeEditable, avisar, cajaError, selectorMes } from './ui.js';
 
 const ORIGEN_REAL = 'gestoria';
 const MESES_HISTORICO = 6;
@@ -8,28 +8,29 @@ const MESES_HISTORICO = 6;
 export function montar(el) {
   // El cierre de la gestoría llega el día 5 del mes siguiente: por defecto, el mes pasado
   let mes = sumarMeses(mesActual(), -1);
-  let cfg = null, liq = null, liqAnt = null;
+  let cfg = null, rango = null;   // rango: respuesta de panelCostes de los últimos meses
   let errorCarga = null, errorGuardado = null;
   let guardando = false;
   let filas = new Map();      // idTec → { texto, estado: 'guardado'|'sugerido'|'editado'|'vacio', sugerencia }
-  let historico = new Map();  // mes → 'real' | 'estimacion' | 'sin datos' | 'error'
   let informeCsv = null;
 
   const cambiadas = () => [...filas].filter(([, f]) => f.estado === 'editado');
+  const mesesHistorico = () => Array.from({ length: MESES_HISTORICO }, (_, i) => sumarMeses(mes, -i)).reverse();
 
   async function recargar() {
     errorCarga = null;
     pintar(true);
-    const [c, a, b] = await Promise.allSettled([api.leerConfig(), api.leerLiquidacion(mes), api.leerLiquidacion(sumarMeses(mes, -1))]);
-    if (c.status === 'rejected') errorCarga = c.reason;
-    else if (a.status === 'rejected') errorCarga = a.reason;
-    if (!errorCarga) {
-      cfg = c.value; liq = a.value; liqAnt = b.status === 'fulfilled' ? b.value : null;
+    try {
+      // Una sola lectura cubre el mes, el anterior (sugerencias) y el histórico
+      [cfg, rango] = await Promise.all([api.leerConfig(), api.leerCostes(mesesHistorico()[0], mes)]);
       prepararFilas();
-      cargarHistorico();
+    } catch (e) {
+      errorCarga = e;
     }
     pintar();
   }
+
+  const costeDe = (m, idTec) => (rango?.costes || []).find(c => c.mes === m && c.idTec === idTec) || null;
 
   function prepararFilas() {
     const previas = filas;
@@ -37,39 +38,27 @@ export function montar(el) {
     for (const t of tecnicosDelMes()) {
       const escrita = previas.get(t.id);
       if (escrita && escrita.estado === 'editado') { filas.set(t.id, escrita); continue; }   // no se pierde lo tecleado
-      const actual = liq.filas.find(f => f.idTec === t.id);
-      const anterior = liqAnt?.filas.find(f => f.idTec === t.id);
-      const sugerencia = anterior?.costeTec ?? null;
-      if (actual && actual.origenCostes === ORIGEN_REAL) filas.set(t.id, { texto: importeEditable(actual.costeTec), estado: 'guardado', sugerencia, estimacion: null });
-      else if (sugerencia !== null) filas.set(t.id, { texto: importeEditable(sugerencia), estado: 'sugerido', sugerencia, estimacion: actual?.costeTec ?? null });
-      else filas.set(t.id, { texto: '', estado: 'vacio', sugerencia, estimacion: actual?.costeTec ?? null });
+      const actual = costeDe(mes, t.id);
+      const sugerencia = costeDe(sumarMeses(mes, -1), t.id)?.costeEmpresaMes ?? null;
+      if (actual && actual.origen === ORIGEN_REAL) filas.set(t.id, { texto: importeEditable(actual.costeEmpresaMes), estado: 'guardado', sugerencia });
+      else if (sugerencia !== null) filas.set(t.id, { texto: importeEditable(sugerencia), estado: 'sugerido', sugerencia });
+      else filas.set(t.id, { texto: '', estado: 'vacio', sugerencia });
     }
   }
-  const tecnicosDelMes = () => cfg.tecnicos.filter(t => vigenteEnMes(t.alta, t.baja, mes));
+  const tecnicosDelMes = (m = mes) => cfg.tecnicos.filter(t => vigenteEnMes(t.alta, t.baja, m));
 
-  // Qué meses ya tienen coste real y cuáles van con estimación
-  async function cargarHistorico() {
-    const meses = Array.from({ length: MESES_HISTORICO }, (_, i) => sumarMeses(mes, -i)).reverse();
-    const pendientesLeer = meses.filter(m => !historico.has(m) || m === mes);
-    await Promise.all(pendientesLeer.map(async m => {
-      try {
-        const r = m === mes ? liq : await api.leerLiquidacion(m);
-        historico.set(m, !r.filas.length ? 'sin datos' : r.filas.every(f => f.origenCostes === ORIGEN_REAL) ? 'real' : 'estimacion');
-      } catch {
-        historico.set(m, 'error');
-      }
-    }));
-    pintarHistorico();
-  }
+  // Qué meses ya tienen coste real de todos los técnicos y cuáles van (en todo o en parte) con estimación
   function pintarHistorico() {
     const caja = el.querySelector('#historico');
-    if (!caja) return;
-    const meses = Array.from({ length: MESES_HISTORICO }, (_, i) => sumarMeses(mes, -i)).reverse();
-    const etiqueta = { real: ['ok', 'coste real'], estimacion: ['aviso', 'estimación'], 'sin datos': ['', 'sin datos'], error: ['error', 'no disponible'] };
-    caja.innerHTML = meses.map(m => {
-      const e = historico.get(m);
-      const [clase, texto] = e ? etiqueta[e] : ['', '…'];
-      return `<span class="insignia ${clase}" title="${esc(nombreMes(m))}">${esc(nombreMes(m))}: ${texto}</span>`;
+    if (!caja || !rango) return;
+    caja.innerHTML = mesesHistorico().map(m => {
+      const tecs = tecnicosDelMes(m);
+      const reales = tecs.filter(t => costeDe(m, t.id)?.origen === ORIGEN_REAL).length;
+      const [clase, texto] = !tecs.length ? ['', 'sin técnicos']
+        : reales === tecs.length ? ['ok', 'coste real']
+        : reales ? ['aviso', `estimación (${reales} de ${tecs.length} reales)`]
+        : ['aviso', 'estimación'];
+      return `<span class="insignia ${clase}">${esc(nombreMes(m))}: ${texto}</span>`;
     }).join('');
   }
 
@@ -90,7 +79,6 @@ export function montar(el) {
       (r.avisos || []).forEach(a => avisar(String(a), 'aviso', 12000));
       avisar(`Costes de ${nombreMes(mes)} guardados (${costes.length} técnico${costes.length === 1 ? '' : 's'}).`);
       for (const [id] of cambiadas()) filas.get(id).estado = 'guardado';
-      historico.delete(mes);
       guardando = false;
       await recargar();
       return;
@@ -126,12 +114,12 @@ export function montar(el) {
         <div><h1>Costes de personal</h1><p class="tenue">Coste de empresa del mes por técnico: bruto + Seguridad Social + prorrata de pagas. Se rellena con el cierre de la gestoría.</p></div>
         <span class="empuje"></span>${selectorMes('mes', mes)}
       </div>`;
-    if (cargando && !liq) { el.innerHTML = cabecera + '<p class="cargando">Cargando…</p>'; return; }
-    if (errorCarga && !liq) {
+    if (cargando && !rango) { el.innerHTML = cabecera + '<p class="cargando">Cargando…</p>'; return; }
+    if (errorCarga && !rango) {
       el.innerHTML = cabecera + cajaError(errorCarga, 'No se han podido cargar los costes') + '<button class="boton" data-accion="recargar">Reintentar</button>';
       return;
     }
-    if (!liq) return;
+    if (!rango) return;
     const hayCambios = cambiadas().length > 0;
     const sugeridas = [...filas.values()].filter(f => f.estado === 'sugerido').length;
 
@@ -139,7 +127,6 @@ export function montar(el) {
       <div class="meses" id="historico" aria-label="Estado de los meses"></div>
       ${errorCarga ? cajaError(errorCarga, 'No se ha podido actualizar') : ''}
       ${errorGuardado ? cajaError(errorGuardado, 'El servidor no ha aceptado los costes') : ''}
-      ${!liqAnt ? '<div class="caja-aviso">No se ha podido leer el mes anterior: no hay sugerencias que precargar.</div>' : ''}
       ${informeCsv ? `<div class="${informeCsv.sinCasar.length ? 'caja-aviso' : 'tarjeta bloque'}">
           CSV: ${informeCsv.leidas} técnico${informeCsv.leidas === 1 ? '' : 's'} rellenado${informeCsv.leidas === 1 ? '' : 's'}. Revisa y pulsa «Guardar costes».
           ${informeCsv.sinCasar.length ? `<br>Líneas que no corresponden a ningún técnico activo del mes:<ul>${informeCsv.sinCasar.map(l => `<li><code>${esc(l)}</code></li>`).join('')}</ul>` : ''}
@@ -153,7 +140,7 @@ export function montar(el) {
         <button class="boton" data-accion="guardar" ${hayCambios && !guardando ? '' : 'disabled'}>${guardando ? 'Guardando…' : 'Guardar costes'}</button>
       </div>
       <div class="tabla-scroll"><table>
-        <thead><tr><th>Técnico</th><th>Grupo</th><th class="num">Coste de empresa del mes</th><th>Estado</th><th class="num">Estimación del backend</th></tr></thead>
+        <thead><tr><th>Técnico</th><th>Grupo</th><th class="num">Coste de empresa del mes</th><th>Estado</th></tr></thead>
         <tbody>${tecnicosDelMes().map(t => {
           const f = filas.get(t.id);
           const estado = {
@@ -167,9 +154,8 @@ export function montar(el) {
             <td>${esc(t.grupo || '')}</td>
             <td class="num"><input class="importe" inputmode="decimal" data-id="${esc(t.id)}" value="${esc(f.texto)}" placeholder="0,00" aria-label="Coste de ${esc(t.nombre)}"> €</td>
             <td>${estado}</td>
-            <td class="num tenue">${f.estado === 'guardado' ? '—' : eur(f.estimacion)}</td>
           </tr>`;
-        }).join('') || '<tr><td colspan="5" class="vacio">No hay técnicos activos este mes.</td></tr>'}</tbody>
+        }).join('') || '<tr><td colspan="4" class="vacio">No hay técnicos activos este mes.</td></tr>'}</tbody>
       </table></div>
       <p class="tenue">Las sugerencias (en morado y con borde discontinuo) no se envían hasta que se confirman o se editan.</p>`;
     pintarHistorico();
@@ -194,7 +180,7 @@ export function montar(el) {
     if (t.id === 'mes') {
       if (!t.value) return;
       if (cambiadas().length && !confirm('Hay costes sin guardar. ¿Cambiar de mes y descartarlos?')) { t.value = mes; return; }
-      mes = t.value; filas = new Map(); liq = null; informeCsv = null; errorGuardado = null;
+      mes = t.value; filas = new Map(); rango = null; informeCsv = null; errorGuardado = null;
       recargar();
     } else if (t.id === 'csv' && t.files[0]) {
       importarCsv(await t.files[0].text());

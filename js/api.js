@@ -8,7 +8,7 @@ export const URL_BACKEND = 'https://script.google.com/macros/s/AKfycbxMMeyP9g75p
 // Cuando el backend confirme otra acción, se añade aquí y deja de usarse su demostración.
 const EN_PRODUCCION = new Set(['panelLogin']);
 
-const TODAS = ['panelLogin', 'panelConfig', 'panelCompras', 'panelLiquidacion', 'panelGuardarConfig',
+const TODAS = ['panelLogin', 'panelConfig', 'panelCompras', 'panelLiquidacion', 'panelCostes', 'panelGuardarConfig',
   'panelAsignarCombustible', 'panelClasificarProveedor', 'panelCostesTecnico'];
 export const hayDemostracion = () => TODAS.some(a => !EN_PRODUCCION.has(a));
 
@@ -153,6 +153,7 @@ export async function entrar(clave) {
 export const leerConfig = () => llamar('panelConfig');
 export const leerCompras = mes => llamar('panelCompras', { params: { mes } });
 export const leerLiquidacion = mes => llamar('panelLiquidacion', { params: { mes } });
+export const leerCostes = (desde, hasta) => llamar('panelCostes', { params: { desde, hasta } });
 
 export const guardarConfig = cambios => llamar('panelGuardarConfig', { metodo: 'POST', cuerpo: cambios });
 export const asignarCombustible = asignaciones => llamar('panelAsignarCombustible', { metodo: 'POST', cuerpo: { asignaciones } });
@@ -207,6 +208,8 @@ function crearDemo() {
       { desde: `${A}-01-01`, hasta: null, margenMin: 2000, margenMax: 2500, importe: 30 },
     ],
     ejercicio: { anio: Number(A), jornadaAnual: 1748, diasEfectivos: 227 },
+    limites: { tecnicosPorUnidad: 2 },
+    tiposProveedor: ['combustible', 'material', 'vehiculo', 'estructura', 'herramienta', 'mixto', 'ignorar', 'sinClasificar'],
     facturas: {
       [M]: [
         { id: 'd1', fecha: `${M}-04`, proveedor: 'BALLENOIL SA', tipo: 'combustible', importeSinIva: 82.31, matricula: null, numero: 'F-2026-1234' },
@@ -256,9 +259,13 @@ function demoResponder(accion, params, p) {
   switch (accion) {
     case 'panelConfig':
       return { ok: true, tecnicos: conActivo(demo.tecnicos, 'alta', 'baja'), vehiculos: conActivo(demo.vehiculos, 'desde', 'hasta'),
-        unidades: demo.unidades, asignaciones: demo.asignaciones, tramos: demo.tramos, ejercicio: demo.ejercicio };
+        unidades: demo.unidades, asignaciones: demo.asignaciones, tramos: demo.tramos, ejercicio: demo.ejercicio, limites: demo.limites };
     case 'panelCompras':
-      return { ok: true, mes: params.mes, facturas: demo.facturas[params.mes] || [], sinClasificar: demo.sinClasificar[params.mes] || [] };
+      return { ok: true, mes: params.mes, facturas: demo.facturas[params.mes] || [], sinClasificar: demo.sinClasificar[params.mes] || [], tiposProveedor: demo.tiposProveedor };
+    case 'panelCostes':
+      return { ok: true, desde: params.desde, hasta: params.hasta, costes: Object.entries(demo.costes)
+        .filter(([m]) => m >= params.desde && m <= params.hasta)
+        .flatMap(([m, c]) => Object.entries(c).map(([idTec, costeEmpresaMes]) => ({ mes: m, idTec, costeEmpresaMes, origen: 'gestoria' }))) };
     case 'panelLiquidacion':
       return demoLiquidacion(params.mes);
     case 'panelGuardarConfig': {
@@ -266,9 +273,12 @@ function demoResponder(accion, params, p) {
       const ids = nuevas.filter(a => a.idTec && a.idUnidad).map(a => a.idTec);
       if (new Set(ids).size !== ids.length) return { ok: false, error: 'Un técnico aparece en dos unidades el mismo día.' };
       const poner = (lista, clave, o) => { const i = lista.findIndex(x => x[clave] === o[clave]); if (i >= 0) lista[i] = o; else lista.push(o); };
-      (p.tecnicos || []).forEach(t => poner(demo.tecnicos, 'id', t));
+      // Las altas llegan sin id: lo asigna el backend y lo devuelve
+      const asignados = { tecnicos: [], unidades: [] };
+      const siguiente = (lista, pref, cifras) => pref + String(Math.max(0, ...lista.map(x => Number(String(x.id).replace(/\D/g, '')) || 0)) + 1).padStart(cifras, '0');
+      for (const t of p.tecnicos || []) { if (!t.id) { t.id = siguiente(demo.tecnicos, 'T', 2); asignados.tecnicos.push(t.id); } poner(demo.tecnicos, 'id', t); }
       (p.vehiculos || []).forEach(v => poner(demo.vehiculos, 'matricula', v));
-      (p.unidades || []).forEach(u => poner(demo.unidades, 'id', u));
+      for (const u of p.unidades || []) { if (!u.id) { u.id = siguiente(demo.unidades, 'U', 1); asignados.unidades.push(u.id); } poner(demo.unidades, 'id', u); }
       for (const a of nuevas) {
         for (const v of demo.asignaciones) {
           const mismo = a.idTec ? v.idTec === a.idTec : (!v.idTec && v.idUnidad === a.idUnidad);
@@ -276,12 +286,12 @@ function demoResponder(accion, params, p) {
         }
         if (a.idUnidad) demo.asignaciones.push(a);
       }
-      return { ok: true, accion, avisos: [] };
+      return { ok: true, accion, avisos: [], ids: asignados };
     }
     case 'panelAsignarCombustible':
       for (const a of p.asignaciones || []) for (const lista of Object.values(demo.facturas)) {
         const f = lista.find(x => x.id === a.idFactura);
-        if (f) f.matricula = a.matricula;
+        if (f) f.matricula = a.matricula || null;
       }
       return { ok: true, accion };
     case 'panelClasificarProveedor':

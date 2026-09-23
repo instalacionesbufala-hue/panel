@@ -2,14 +2,10 @@
 import * as api from './api.js';
 import { esc, eur, fecha, mesActual, sumarMeses, nombreMes, vigenteEnMes, avisar, cajaError, selectorMes } from './ui.js';
 
-// Tipos que admite el contrato para clasificar un proveedor
-const TIPOS = [
-  ['combustible', 'Combustible'],
-  ['material', 'Material'],
-  ['vehiculo', 'Vehículo'],
-  ['estructura', 'Estructura'],
-];
 const SIN = '';
+// Los tipos de proveedor los manda el backend en panelCompras.tiposProveedor (texto u objeto { valor, etiqueta })
+const valorTipo = t => typeof t === 'string' ? t : (t.valor ?? t.id);
+const etiquetaTipo = t => typeof t === 'string' ? t.charAt(0).toUpperCase() + t.slice(1) : (t.etiqueta ?? t.nombre ?? valorTipo(t));
 
 export function montar(el) {
   let mes = mesActual();
@@ -29,7 +25,7 @@ export function montar(el) {
       // Lo ya guardado en el servidor deja de estar pendiente
       for (const [id, m] of pendientes) {
         const f = compras.facturas.find(x => x.id === id);
-        if (!f || f.matricula === m) pendientes.delete(id);
+        if (!f || (f.matricula || SIN) === m) pendientes.delete(id);
       }
     } catch (e) {
       errorCarga = e;
@@ -52,7 +48,8 @@ export function montar(el) {
 
   async function guardar() {
     if (!pendientes.size) return;
-    const asignaciones = [...pendientes].filter(([, m]) => m).map(([idFactura, matricula]) => ({ idFactura, matricula }));
+    // matricula: null quita el vehículo de la factura
+    const asignaciones = [...pendientes].map(([idFactura, matricula]) => ({ idFactura, matricula: matricula || null }));
     if (!asignaciones.length) return;
     guardando = true; errorGuardado = null; pintar();
     try {
@@ -73,7 +70,8 @@ export function montar(el) {
     clasificando.add(proveedor); pintar();
     try {
       await api.clasificarProveedor(proveedor, tipo);
-      avisar(`«${proveedor}» queda clasificado como ${TIPOS.find(t => t[0] === tipo)[1].toLowerCase()}. Sus próximas facturas entrarán solas.`);
+      const t = (compras.tiposProveedor || []).find(x => valorTipo(x) === tipo);
+      avisar(`«${proveedor}» queda clasificado como «${t ? etiquetaTipo(t) : tipo}». Sus próximas facturas entrarán solas.`);
       clasificando.delete(proveedor);
       await recargar();
       return;
@@ -96,7 +94,7 @@ export function montar(el) {
       <td class="num">${eur(f.importeSinIva)}</td>
       <td>
         <select data-factura="${esc(f.id)}" aria-label="Vehículo de la factura ${esc(f.numero || f.id)}">
-          ${f.matricula ? '' : `<option value="" ${sinAsignar ? 'selected' : ''}>— Elige vehículo —</option>`}
+          <option value="" ${sinAsignar ? 'selected' : ''}>${f.matricula ? '— Quitar vehículo —' : '— Elige vehículo —'}</option>
           ${opciones.map(x => `<option value="${esc(x)}" ${x === m ? 'selected' : ''}>${esc(x)}${veh(x)?.modelo ? ' · ' + esc(veh(x).modelo) : ''}</option>`).join('')}
         </select>
         ${pendientes.has(f.id) ? '<span class="insignia sugerido">sin guardar</span>' : ''}
@@ -125,6 +123,7 @@ export function montar(el) {
     const totAnt = totales(deCombustible(comprasAnt), false);
     const matriculas = [...new Set([...vehs.map(v => v.matricula), ...[...tot.keys()].filter(Boolean)])];
 
+    const tipos = (compras.tiposProveedor || []).filter(t => valorTipo(t) !== 'sinClasificar');
     // Proveedores sin clasificar, agrupados
     const porProveedor = new Map();
     for (const f of compras.sinClasificar || []) {
@@ -176,7 +175,7 @@ export function montar(el) {
           <thead><tr><th>Proveedor</th><th class="num">Facturas</th><th class="num">Importe sin IVA</th><th>Clasificar como</th></tr></thead>
           <tbody>${[...porProveedor].map(([p, d]) => `<tr>
             <td>${esc(p)}</td><td class="num">${d.n}</td><td class="num">${eur(d.total)}</td>
-            <td><div class="botones-tipo">${TIPOS.map(([v, n]) => `<button class="boton secundario mini" data-accion="clasificar" data-proveedor="${esc(p)}" data-tipo="${v}" ${clasificando.has(p) ? 'disabled' : ''}>${n}</button>`).join('')}</div></td>
+            <td><div class="botones-tipo">${tipos.map(t => `<button class="boton secundario mini" data-accion="clasificar" data-proveedor="${esc(p)}" data-tipo="${esc(valorTipo(t))}" ${clasificando.has(p) ? 'disabled' : ''}>${esc(etiquetaTipo(t))}</button>`).join('') || '<span class="tenue">El servidor no ha enviado los tipos de proveedor.</span>'}</div></td>
           </tr>`).join('')}</tbody>
         </table></div>
       </section>` : ''}`;

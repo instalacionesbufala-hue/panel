@@ -1,7 +1,7 @@
 # Contrato del backend — fuente de verdad
 
 Lo mantiene el backend. **Si algo de aquí contradice a `DECISIONES.md`, manda este fichero.**
-Última actualización: 23/09/2026 · backend **v3.20.15** (`Panel_Config.gs` v1.1).
+Última actualización: 23/09/2026 · backend **v3.20.16** (`Panel_Config.gs` v1.2).
 
 ## Cómo saber qué está disponible
 
@@ -29,7 +29,7 @@ Solo lectura: no escribe nada en la hoja. Devuelve siempre `accion: "panelConfig
   "accion": "panelConfig",
   "tecnicos": [
     { "id": "E02", "nombre": "Miguel Á. Nogales", "rol": "Instalador",
-      "grupo": null, "alta": null, "baja": null, "activo": true }
+      "grupo": "Oficial de 1ª", "alta": "2025-04-14", "baja": null, "activo": true }
   ],
   "vehiculos": [
     { "matricula": "2690NKC", "sinMatricula": false, "modelo": "Furgoneta B1",
@@ -65,9 +65,10 @@ Solo lectura: no escribe nada en la hoja. Devuelve siempre `accion: "panelConfig
 - **`tipo`**: `"productiva"` (brigadas de instalación) o `"no_productiva"` (SAT y Estructura).
 - **`computaVariable: false` ⇒ esa unidad y sus técnicos quedan FUERA del cálculo del variable.** Vale para SAT (lo paga ESMOVE) y para Estructura/Gerencia. `panelLiquidacion` no devolverá filas suyas; el panel tampoco debe sumarlas si las recibiera.
 - **`fechas` en `AAAA-MM-DD` o `null`.** `null` en `desde` = «desde siempre»; `null` en `hasta`/`baja` = vigente. `hasta` y `baja` son **inclusive**.
-- **`grupo` llega siempre `null`.** El grupo profesional de convenio todavía no existe en la hoja de empleados; el `rol` (Instalador, Jefe, SAT, Gerencia) no es lo mismo y no se hace pasar por él. Pendiente de decidir.
+- **`grupo` es el grupo de convenio** («Oficial de 1ª», «Peón (retribución de oficial de 2ª)»), distinto del `rol` (Instalador, Jefe, SAT, Gerencia). Puede llegar `null`: hoy lo hace en Gerencia, que está fuera de convenio. El panel debe tolerarlo.
 - **`asignaciones` con `derivada: true`** son el vínculo vehículo→unidad deducido del recurso, no una fila escrita por nadie. Desaparecerán cuando `panelGuardarConfig` escriba la matrícula en la asignación.
 - **`vehiculos[].sinMatricula: true`** significa que el recurso no tiene matrícula legible y se está usando su código interno como identificador. El panel puede mostrarlo, pero conviene avisar.
+- **`vehiculos[].origen`** dice de qué pestaña sale cada vehículo. Las matrículas no se repiten: un vehículo que esté en las dos fuentes se publica una sola vez, con los datos de `🚚 Recursos`.
 - **`tramos` va vacío** hasta que exista el motor de liquidación.
 - **`jornadaAnual: 1770`** (Convenio del Metal de Madrid 2024–2027).
 

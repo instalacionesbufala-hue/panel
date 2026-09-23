@@ -5,15 +5,16 @@
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <meta name="robots" content="noindex, nofollow">
   <title>Panel Búfala Tech</title>
+  <link rel="icon" type="image/png" href="img/favicon.png">
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
   <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Manrope:wght@400;500;600;700;800&family=Sora:wght@400;500;600&family=JetBrains+Mono:wght@500;700&display=swap">
-  <link rel="stylesheet" href="css/panel.css?v=11">
-  <script type="module" src="js/app.js?v=11"></script>
+  <link rel="stylesheet" href="css/panel.css?v=12">
+  <script type="module" src="js/app.js?v=12"></script>
 </head>
 <body>
   <header class="cabecera">
-    <div class="marca">Búfala Tech <span>· Panel de administración</span></div>
+    <div class="marca"><img src="img/logo.png" alt="" width="40" height="40">Búfala Tech <span>· Panel de administración</span></div>
     <nav class="menu" id="menu" aria-label="Secciones">
       <a href="#unidades" data-vista="unidades">Unidades</a>
       <a href="#combustible" data-vista="combustible">Combustible</a>
@@ -36,6 +37,7 @@
   <!-- Pantalla de acceso: es una capa encima de la vista, así no se pierde lo que haya a medias -->
   <div id="acceso" class="acceso" hidden>
     <form id="form-acceso" class="tarjeta acceso-caja" autocomplete="off">
+      <img class="acceso-logo" src="img/logo.png" alt="Búfala Tech" width="96" height="96">
       <h1>Acceso al panel</h1>
       <p id="acceso-motivo" class="tenue">Introduce la contraseña del panel.</p>
       <label>Contraseña

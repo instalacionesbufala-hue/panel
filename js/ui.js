@@ -70,7 +70,19 @@ export function preguntar(titulo, cuerpoHtml, { aceptar = 'Aceptar', cancelar = 
   dlg.querySelector('#dialogo-no').textContent = cancelar;
   dlg.returnValue = '';
   return new Promise(resolver => {
-    dlg.addEventListener('close', () => resolver(dlg.returnValue === 'si' ? dlg.querySelector('form') : null), { once: true });
+    // Se responde en cuanto se envía el formulario; 'close' queda para Escape y para el cierre forzado.
+    // (El evento 'close' puede retrasarse si la página no se está dibujando.)
+    const form = dlg.querySelector('form');
+    let respondido = false;
+    const responder = acepta => {
+      if (respondido) return;
+      respondido = true;
+      form.removeEventListener('submit', alEnviar);
+      resolver(acepta ? form : null);
+    };
+    const alEnviar = ev => responder(ev.submitter?.value === 'si');
+    form.addEventListener('submit', alEnviar);
+    dlg.addEventListener('close', () => responder(dlg.returnValue === 'si'), { once: true });
     dlg.showModal();
     const primero = dlg.querySelector('#dialogo-cuerpo input, #dialogo-cuerpo select');
     if (primero) primero.focus();

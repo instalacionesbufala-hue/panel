@@ -1,10 +1,42 @@
 # Decisiones del panel y dudas para el backend
 
-**El contrato vive en [`BACKEND.md`](BACKEND.md)**, lo mantiene el backend y manda sobre este fichero. Aquí queda lo que decide el panel por su cuenta y lo que el panel pregunta. Revisado contra BACKEND.md (v3.20.12) el 23/09/2026.
+**El contrato vive en [`BACKEND.md`](BACKEND.md)**, lo mantiene el backend y manda sobre este fichero. Aquí queda lo que decide el panel por su cuenta y lo que el panel pregunta. Revisado contra BACKEND.md (v3.20.12) y contra el mensaje del backend sobre `panelConfig` (v3.20.13+) el 23/09/2026. Mientras BACKEND.md no recoja ese mensaje, el panel sigue el mensaje.
+
+## Prueba de `panelConfig` en producción (23/09/2026, backend v3.20.14)
+
+Prueba de solo lectura de las pantallas Unidades y Técnicos y vehículos. Salieron `ping`, `panelLogin` y `panelConfig`. No se guardó nada: `panelGuardarConfig` aún no está en `accionesPanel`, así que el panel bloquea los guardados («Aún no se puede guardar»).
+
+**Encaja:**
+- Técnicos `E01…E09` con `rol`, y `grupo` a `null`.
+- Unidades `U1…U3`, 2 técnicos y 1 vehículo en cada una desde el 01/09/2026.
+- `limites.tecnicosPorUnidad = 2`, que el panel aplica al soltar.
+- `tramos` vacío y `ejercicio` sin `diasEfectivos`.
+- Sin testigo, `{ ok:false, codigo:"sesion" }`.
+- La `brigada` de cada vehículo coincide hoy con las asignaciones.
+- SAT (E05) y Gerencia (E06) no aparecen como asignables. La baja de E07 no aparece.
+
+**No encaja, o hay que decidirlo** (ver dudas 2 a 5).
 
 ## Dudas abiertas para el backend
 
-1. **¿`panelConfig` y `panelGuardarConfig` saldrán juntas?** BACKEND.md anuncia `panelConfig` como la siguiente y el resto después. Mientras una lectura esté en producción y su escritura no (o al revés), el panel **bloquea esa escritura** y muestra «Aún no se puede guardar» (ver «Lecturas y escrituras emparejadas»). Si `panelConfig` sale sola, las pantallas Unidades y Técnicos y vehículos serán de solo consulta hasta que llegue `panelGuardarConfig`. ¿Es lo que queréis, o preferís publicarlas juntas? Lo mismo vale para las parejas `panelCompras` ↔ `panelAsignarCombustible` / `panelClasificarProveedor` y `panelCostes` ↔ `panelCostesTecnico`.
+1. **`panelConfig` ya está en producción, pero `panelGuardarConfig` no.** Como estaba previsto, el panel bloquea esa escritura: Unidades y Técnicos y vehículos son de solo consulta hasta que llegue `panelGuardarConfig`. Lo mismo pasará con las parejas `panelCompras` ↔ `panelAsignarCombustible` / `panelClasificarProveedor` y `panelCostes` ↔ `panelCostesTecnico` si salen por separado.
+2. **El vehículo de Gerencia (`9409LVM`, `brigada: "Gerencia"`) sale en «Vehículos sin asignar» y se puede meter en una brigada.** ¿Debe quedar fuera de las unidades? Si es así, ¿con qué dato lo distingo? Propuesta: un campo explícito, `vehiculos[].asignable: false`, antes que deducirlo del texto de `brigada`.
+3. **`brigada` frente a `asignaciones`.** Las dos dicen en qué unidad está hoy el vehículo. El panel usa `asignaciones`, porque tienen vigencia, y muestra `brigada` solo como dato informativo. ¿`brigada` se calcula a partir de las asignaciones, o es un dato aparte que podría no coincidir? Si es aparte, ¿cuál manda?
+4. **No hay composición registrada antes del 01/09/2026.** Al consultar un día anterior, las tres brigadas salen vacías. El panel avisa: «El servidor no tiene registrada ninguna composición antes del 01/09/2026». ¿Se va a cargar el histórico anterior, o ese es el punto de partida?
+5. **Dos vehículos con `desde: null`** (`2690NKC` y `4299NGK`). El panel lo trata como «en servicio desde siempre». ¿Es correcto, o falta la fecha?
+
+## Unidades no productivas (`unidades[].tipo`), anunciado y aún no publicado
+
+Lo que hace el panel desde el 23/09/2026:
+- **Mientras `panelConfig` no traiga `tipo`**, el panel marca U1 a U3 como `instalacion` y añade dos unidades de ejemplo: `NP-SAT` («SAT») y `NP-EST` («Estructura»), con `tipo: "no_productiva"` y la marca **«ejemplo»**. En cuanto el backend publique el campo, esto deja de hacerse solo.
+- Las no productivas se pintan en una zona aparte, «No productivas», **sin `limites.tecnicosPorUnidad`**. Aceptan técnicos y vehículos igual que las brigadas.
+- **Las unidades de ejemplo nunca se envían al backend.** Si un cambio toca una de ellas, el panel no guarda y lo explica.
+
+Dudas:
+
+6. **¿Qué roles puede recibir una unidad no productiva?** Hoy solo se asignan técnicos con rol `Instalador`, también en SAT y Estructura, tal como se pidió («igual que las demás»). Con esa regla, el técnico de rol SAT (E05) no se puede poner en la unidad SAT. ¿Deben las no productivas aceptar también los roles SAT y Gerencia?
+7. **Identificadores y nombres** de las unidades SAT y Estructura cuando se publiquen. El panel no depende de ellos; es solo para cotejar.
+8. **Alta de unidades:** ¿el formulario de «Nueva unidad» debe pedir el `tipo`? Hoy no lo envía.
 
 ## Resueltas por BACKEND.md (23/09/2026)
 

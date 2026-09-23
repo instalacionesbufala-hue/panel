@@ -182,7 +182,20 @@ export async function entrar(clave) {
   return r;
 }
 
-export const leerConfig = () => llamar('panelConfig');
+export const leerConfig = async () => completarConfig(await llamar('panelConfig'));
+
+// Unidades no productivas (SAT, Estructura): el backend va a añadir unidades[].tipo
+// ('instalacion' | 'no_productiva'). Mientras panelConfig no lo traiga, se completan aquí
+// con datos de ejemplo marcados con demostracion:true. En cuanto el backend publique el campo,
+// esto deja de actuar solo. Las unidades de ejemplo nunca se envían al backend (ver unidades.js).
+const NO_PRODUCTIVAS_EJEMPLO = [
+  { id: 'NP-SAT', nombre: 'SAT', tipo: 'no_productiva', activa: true, demostracion: true },
+  { id: 'NP-EST', nombre: 'Estructura', tipo: 'no_productiva', activa: true, demostracion: true },
+];
+function completarConfig(c) {
+  if (!c || !Array.isArray(c.unidades) || c.unidades.some(u => u.tipo)) return c;
+  return { ...c, unidades: [...c.unidades.map(u => ({ ...u, tipo: 'instalacion' })), ...copia(NO_PRODUCTIVAS_EJEMPLO)] };
+}
 export const leerCompras = mes => llamar('panelCompras', { params: { mes } });
 export const leerLiquidacion = mes => llamar('panelLiquidacion', { params: { mes } });
 export const leerCostes = (desde, hasta) => llamar('panelCostes', { params: { desde, hasta } });
@@ -212,22 +225,26 @@ function crearDemo() {
   const finP = diaAntes(`${M}-01`);
   return {
     tecnicos: [
-      { id: 'T01', nombre: 'Antonio Ruiz', grupo: '3', alta: `${A}-01-01`, baja: null },
-      { id: 'T02', nombre: 'Lucía Pérez', grupo: '2', alta: `${A}-02-01`, baja: null },
-      { id: 'T03', nombre: 'Javier Gómez', grupo: '3', alta: `${A}-04-01`, baja: null },
-      { id: 'T04', nombre: 'María López', grupo: '2', alta: `${A}-05-01`, baja: null },
-      { id: 'T05', nombre: 'Pedro Sanz', grupo: '4', alta: `${A}-06-01`, baja: null },
-      { id: 'T06', nombre: 'Elena Martín', grupo: '3', alta: `${A}-01-01`, baja: finP },
+      { id: 'T01', nombre: 'Antonio Ruiz', rol: 'Instalador', grupo: null, alta: `${A}-01-01`, baja: null },
+      { id: 'T02', nombre: 'Lucía Pérez', rol: 'Instalador', grupo: null, alta: `${A}-02-01`, baja: null },
+      { id: 'T03', nombre: 'Javier Gómez', rol: 'Instalador', grupo: null, alta: `${A}-04-01`, baja: null },
+      { id: 'T04', nombre: 'María López', rol: 'Instalador', grupo: null, alta: `${A}-05-01`, baja: null },
+      { id: 'T05', nombre: 'Pedro Sanz', rol: 'SAT', grupo: null, alta: `${A}-06-01`, baja: null },
+      { id: 'T06', nombre: 'Elena Martín', rol: 'Instalador', grupo: null, alta: `${A}-01-01`, baja: finP },
+      { id: 'T07', nombre: 'Carmen Vidal', rol: 'Gerencia', grupo: null, alta: `${A}-01-01`, baja: null },
     ],
     vehiculos: [
-      { matricula: '1111AAA', modelo: 'Renault Kangoo', rentingMes: 495.87, desde: `${A}-01-01`, hasta: null },
-      { matricula: '2222BBB', modelo: 'Citroën Berlingo', rentingMes: 470, desde: `${A}-01-01`, hasta: null },
-      { matricula: '3333CCC', modelo: 'Ford Transit', rentingMes: 520, desde: `${A}-03-01`, hasta: null },
+      { matricula: '1111AAA', modelo: 'Renault Kangoo', brigada: 'Búfala 1', rentingMes: 495.87, desde: `${A}-01-01`, hasta: null },
+      { matricula: '2222BBB', modelo: 'Citroën Berlingo', brigada: 'Búfala 2', rentingMes: 470, desde: `${A}-01-01`, hasta: null },
+      { matricula: '3333CCC', modelo: 'Ford Transit', brigada: 'Búfala 3', rentingMes: 520, desde: `${A}-03-01`, hasta: null },
+      { matricula: '4444DDD', modelo: 'Toyota Corolla', brigada: 'Gerencia', rentingMes: 410, desde: `${A}-01-01`, hasta: null },
     ],
     unidades: [
-      { id: 'U1', nombre: 'Búfala 1', activa: true },
-      { id: 'U2', nombre: 'Búfala 2', activa: true },
-      { id: 'U3', nombre: 'Búfala 3', activa: true },
+      { id: 'U1', nombre: 'Búfala 1', tipo: 'instalacion', activa: true },
+      { id: 'U2', nombre: 'Búfala 2', tipo: 'instalacion', activa: true },
+      { id: 'U3', nombre: 'Búfala 3', tipo: 'instalacion', activa: true },
+      { id: 'U4', nombre: 'SAT', tipo: 'no_productiva', activa: true },
+      { id: 'U5', nombre: 'Estructura', tipo: 'no_productiva', activa: true },
     ],
     asignaciones: [
       { idTec: 'T01', idUnidad: 'U1', matricula: '1111AAA', desde: `${A}-01-01`, hasta: finP },
@@ -236,10 +253,8 @@ function crearDemo() {
       { idTec: 'T02', idUnidad: 'U1', matricula: '1111AAA', desde: `${M}-01`, hasta: null },
       { idTec: 'T03', idUnidad: 'U2', matricula: '2222BBB', desde: `${M}-01`, hasta: null },
     ],
-    tramos: [
-      { desde: `${A}-01-01`, hasta: null, margenMin: 2000, margenMax: 2500, importe: 30 },
-    ],
-    ejercicio: { anio: Number(A), jornadaAnual: 1748, diasEfectivos: 227 },
+    tramos: [],   // llega vacío hasta que exista el motor de liquidación
+    ejercicio: { anio: Number(A), jornadaAnual: 1748 },
     limites: { tecnicosPorUnidad: 2 },
     // Forma de BACKEND.md: objetos { valor, etiqueta }, sin sinClasificar
     tiposProveedor: [

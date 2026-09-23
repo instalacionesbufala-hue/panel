@@ -1,8 +1,14 @@
 // Pantalla de unidades: formar unidades arrastrando técnicos y vehículos.
-import * as api from './api.js';
-import { esc, fecha, hoy, vigente, avisar, preguntar, cajaError, listaAvisos } from './ui.js';
+import * as api from './api.js?v=6';
+import { esc, fecha, hoy, vigente, avisar, preguntar, cajaError, listaAvisos } from './ui.js?v=6';
 
 const LIBRE = '__libre__';
+// Solo los técnicos de este rol se pueden asignar a una unidad (panelConfig, v3.20.13).
+// Si un técnico no trae rol (datos antiguos o de ejemplo), se considera asignable.
+const ROL_ASIGNABLE = 'Instalador';
+const asignable = t => !t.rol || t.rol === ROL_ASIGNABLE;
+// Unidades no productivas (SAT, Estructura): zona aparte y sin límite de técnicos por unidad
+const esNoProductiva = u => u?.tipo === 'no_productiva';
 
 export function montar(el) {
   let cfg = null;
@@ -35,7 +41,8 @@ export function montar(el) {
     const conAsignacion = new Set(cfg.asignaciones.filter(a => vigente(a.desde, a.hasta, dia)).map(a => a.idUnidad));
     return cfg.unidades.filter(u => soloLectura() ? (u.activa || conAsignacion.has(u.id)) : u.activa !== false);
   }
-  const tecnicosVisibles = () => cfg.tecnicos.filter(t => vigente(t.alta, t.baja, dia));
+  const tecnicosVisibles = () => cfg.tecnicos.filter(t => vigente(t.alta, t.baja, dia) && asignable(t));
+  const noAsignables = () => cfg.tecnicos.filter(t => vigente(t.alta, t.baja, dia) && !asignable(t));
   const vehiculosVisibles = () => cfg.vehiculos.filter(v => vigente(v.desde, v.hasta, dia));
 
   function composicion() {
@@ -60,7 +67,8 @@ export function montar(el) {
 
   const unidadDeTec = (comp, id) => { for (const [u, c] of comp) if (c.tecs.includes(id)) return u; return null; };
   const unidadDeVeh = (comp, mat) => { for (const [u, c] of comp) if (c.mat === mat) return u; return null; };
-  const nombreUnidad = id => cfg.unidades.find(u => u.id === id)?.nombre || id;
+  const unidad = id => cfg.unidades.find(u => u.id === id);
+  const nombreUnidad = id => unidad(id)?.nombre || id;
   const tec = id => cfg.tecnicos.find(t => t.id === id);
   const veh = m => cfg.vehiculos.find(v => v.matricula === m);
 
@@ -104,13 +112,16 @@ export function montar(el) {
 
   async function soltar(tipo, id, destino) {
     if (soloLectura()) return;
+    // Si mientras se confirma cambia el día o se recarga el borrador, la confirmación ya no vale
+    const miBorrador = borrador;
+    const sigueIgual = () => borrador === miBorrador && !soloLectura();
     if (tipo === 'tec') {
       const origen = unidadDeTec(borrador, id);
       if (origen === destino || (!origen && destino === LIBRE)) return;
       const t = tec(id);
       if (destino !== LIBRE) {
-        const limite = cfg.limites?.tecnicosPorUnidad;   // solo si el backend lo define
-        if (limite && borrador.get(destino).tecs.length >= limite) {
+        const limite = cfg.limites?.tecnicosPorUnidad;   // solo si el backend lo define; no aplica a las no productivas
+        if (limite && !esNoProductiva(unidad(destino)) && borrador.get(destino).tecs.length >= limite) {
           rechazo(destino);
           avisar(`«${nombreUnidad(destino)}» ya tiene ${limite} técnico${limite === 1 ? '' : 's'}, el máximo que admite el servidor.`, 'error');
           return;
@@ -124,10 +135,10 @@ export function montar(el) {
              <p>¿Quieres sacarlo de «${esc(nombreUnidad(origen))}» y pasarlo a «${esc(nombreUnidad(destino))}» desde el ${fecha(dia)}?</p>
              ${extras.map(x => `<p class="caja-aviso">${x}</p>`).join('')}`,
             { aceptar: 'Sí, moverlo', cancelar: 'No, dejarlo donde está' });
-          if (!ok) return;
+          if (!ok || !sigueIgual()) return;
         } else if (extras.length) {
           const ok = await preguntar('Asignación programada', extras.map(x => `<p>${x}</p>`).join('') + '<p>¿Asignarlo igualmente?</p>', { aceptar: 'Asignar' });
-          if (!ok) return;
+          if (!ok || !sigueIgual()) return;
         }
       }
       if (origen) borrador.get(origen).tecs = borrador.get(origen).tecs.filter(x => x !== id);
@@ -142,7 +153,7 @@ export function montar(el) {
             `<p>El vehículo <strong>${esc(id)}</strong> ya está en <strong>«${esc(nombreUnidad(origen))}»</strong> el ${fecha(dia)}.</p>
              <p>¿Pasarlo a «${esc(nombreUnidad(destino))}»? «${esc(nombreUnidad(origen))}» se quedará sin vehículo.</p>`,
             { aceptar: 'Sí, moverlo', cancelar: 'No' });
-          if (!ok) return;
+          if (!ok || !sigueIgual()) return;
         }
         const anterior = borrador.get(destino).mat;
         if (anterior) avisar(`${anterior} vuelve a «vehículos sin asignar».`, 'info');
@@ -157,6 +168,13 @@ export function montar(el) {
   async function guardar() {
     const filas = cambios();
     if (!filas.length) return;
+    // Las unidades de ejemplo (aún no publicadas por el backend) nunca se envían
+    const deEjemplo = [...new Set(filas.filter(f => unidad(f.idUnidad)?.demostracion).map(f => nombreUnidad(f.idUnidad)))];
+    if (deEjemplo.length) {
+      errorGuardado = Object.assign(new Error(`«${deEjemplo.join('», «')}» ${deEjemplo.length === 1 ? 'es una unidad' : 'son unidades'} de ejemplo hasta que el backend las publique. Deshaz los cambios que las tocan para poder guardar el resto.`), { tipo: 'solo-lectura' });
+      pintar();
+      return;
+    }
     guardando = true;
     errorGuardado = null;
     pintar();
@@ -180,7 +198,7 @@ export function montar(el) {
     const t = tec(id) || { id, nombre: id };
     return `<div class="ficha tecnico" ${soloLectura() ? '' : 'draggable="true"'} data-tipo="tec" data-id="${esc(id)}">
       <span class="nombre">${esc(t.nombre)}</span>
-      <span class="detalle">${esc(t.id)}${t.grupo ? ' · grupo ' + esc(t.grupo) : ''}</span>
+      <span class="detalle">${esc(t.id)}${t.grupo ? ' · grupo ' + esc(t.grupo) : ''}${t.rol && !asignable(t) ? ' · ' + esc(t.rol) : ''}</span>
       ${selectorMover('tec', id, unidadDeTec(borrador, id))}
     </div>`;
   }
@@ -188,7 +206,7 @@ export function montar(el) {
     const v = veh(mat) || { matricula: mat };
     return `<div class="ficha vehiculo" ${soloLectura() ? '' : 'draggable="true"'} data-tipo="veh" data-id="${esc(mat)}">
       <span class="nombre">${esc(v.matricula)}</span>
-      <span class="detalle">${esc(v.modelo || '')}</span>
+      <span class="detalle">${esc(v.modelo || '')}${v.brigada ? ' · ' + esc(v.brigada) : ''}</span>
       ${selectorMover('veh', mat, unidadDeVeh(borrador, mat))}
     </div>`;
   }
@@ -213,7 +231,26 @@ export function montar(el) {
     const asignadosTec = new Set([...borrador.values()].flatMap(c => c.tecs));
     const asignadosVeh = new Set([...borrador.values()].map(c => c.mat).filter(Boolean));
     const libresTec = tecnicosVisibles().filter(t => !asignadosTec.has(t.id));
+    const otros = noAsignables();
     const libresVeh = vehiculosVisibles().filter(v => !asignadosVeh.has(v.matricula));
+    const primerRegistro = cfg.asignaciones.reduce((m, a) => (!m || (a.desde && a.desde < m) ? a.desde : m), null);
+    const tarjeta = ([u, c]) => `
+              <article class="unidad ${!lectura && unidadCambiada(u) ? 'cambiada' : ''} ${esNoProductiva(unidad(u)) ? 'no-productiva' : ''}">
+                <header><h3>${esc(nombreUnidad(u))}</h3>
+                  ${unidad(u)?.demostracion ? '<span class="insignia sugerido" title="El backend aún no publica esta unidad">ejemplo</span>' : ''}
+                  <span class="insignia">${c.tecs.length === 0 ? 'sin técnicos' : c.tecs.length === 1 ? '1 técnico' : c.tecs.length + ' técnicos'}</span></header>
+                ${c.choques.length ? `<p class="insignia error">Dato incoherente en el servidor: ${esc(c.choques.join('; '))}</p>` : ''}
+                <div class="hueco" data-unidad="${esc(u)}" data-acepta="tec">
+                  <span class="hueco-titulo">Técnicos</span>
+                  ${c.tecs.map(fichaTec).join('') || `<p class="vacio">${lectura ? 'Nadie asignado.' : 'Suelta aquí un técnico.'}</p>`}
+                </div>
+                <div class="hueco" data-unidad="${esc(u)}" data-acepta="veh">
+                  <span class="hueco-titulo">Vehículo</span>
+                  ${c.mat ? fichaVeh(c.mat) : `<p class="vacio">${lectura ? 'Sin vehículo.' : 'Suelta aquí un vehículo.'}</p>`}
+                </div>
+              </article>`;
+    const brigadas = [...borrador].filter(([u]) => !esNoProductiva(unidad(u)));
+    const noProductivas = [...borrador].filter(([u]) => esNoProductiva(unidad(u)));
 
     el.innerHTML = `
       <div class="barra">
@@ -223,7 +260,9 @@ export function montar(el) {
       </div>
       ${errorCarga ? cajaError(errorCarga, 'No se ha podido actualizar') : ''}
       ${lectura
-        ? `<div class="caja-aviso"><strong>Consulta del ${fecha(dia)} · solo lectura.</strong> Así estaban formadas las unidades ese día. Para cambiar la composición vuelve a hoy o a una fecha futura.</div>`
+        ? `<div class="caja-aviso"><strong>Consulta del ${fecha(dia)} · solo lectura.</strong> ${primerRegistro && dia < primerRegistro
+             ? `El servidor no tiene registrada ninguna composición antes del ${fecha(primerRegistro)}, así que este día sale vacío.`
+             : 'Así estaban formadas las unidades ese día.'} Para cambiar la composición vuelve a hoy o a una fecha futura.</div>`
         : `<div class="tarjeta bloque barra" style="align-items:center;margin-bottom:1rem">
              <span>${filas.length
                ? `<strong>${filas.length} cambio${filas.length === 1 ? '' : 's'} sin guardar.</strong> Se aplicarán con efecto desde el <strong>${fecha(dia)}</strong>; la asignación anterior se cierra el día antes y queda en el histórico.`
@@ -236,25 +275,17 @@ export function montar(el) {
       <div class="tablero ${lectura ? 'solo-lectura' : ''}">
         <section class="columna" data-libre="tec" aria-label="Técnicos sin asignar">
           <h2>Técnicos sin asignar <span class="insignia">${libresTec.length}</span></h2>
+          ${otros.length ? `<p class="tenue">Solo se asignan instaladores. No se muestran ${otros.length} de otros roles (${esc([...new Set(otros.map(t => t.rol))].join(", "))}).</p>` : ""}
           <div class="lista-fichas">${libresTec.map(t => fichaTec(t.id)).join('') || '<p class="vacio">Todos los técnicos están en alguna unidad.</p>'}</div>
         </section>
         <section class="col-unidades" aria-label="Unidades">
+          <h2 class="zona-titulo">Brigadas</h2>
           <div class="unidades">
-            ${[...borrador].map(([u, c]) => `
-              <article class="unidad ${!lectura && unidadCambiada(u) ? 'cambiada' : ''}">
-                <header><h3>${esc(nombreUnidad(u))}</h3>
-                  <span class="insignia">${c.tecs.length === 0 ? 'sin técnicos' : c.tecs.length === 1 ? '1 técnico' : c.tecs.length + ' técnicos'}</span></header>
-                ${c.choques.length ? `<p class="insignia error">Dato incoherente en el servidor: ${esc(c.choques.join('; '))}</p>` : ''}
-                <div class="hueco" data-unidad="${esc(u)}" data-acepta="tec">
-                  <span class="hueco-titulo">Técnicos</span>
-                  ${c.tecs.map(fichaTec).join('') || `<p class="vacio">${lectura ? 'Nadie asignado.' : 'Suelta aquí un técnico.'}</p>`}
-                </div>
-                <div class="hueco" data-unidad="${esc(u)}" data-acepta="veh">
-                  <span class="hueco-titulo">Vehículo</span>
-                  ${c.mat ? fichaVeh(c.mat) : `<p class="vacio">${lectura ? 'Sin vehículo.' : 'Suelta aquí un vehículo.'}</p>`}
-                </div>
-              </article>`).join('') || '<p class="vacio">No hay unidades activas. Créalas en «Técnicos y vehículos».</p>'}
+            ${brigadas.map(tarjeta).join('') || '<p class="vacio">No hay brigadas activas. Créalas en «Técnicos y vehículos».</p>'}
           </div>
+          ${noProductivas.length ? `
+          <h2 class="zona-titulo">No productivas <span class="tenue">· sin límite de técnicos</span></h2>
+          <div class="unidades">${noProductivas.map(tarjeta).join('')}</div>` : ''}
         </section>
         <section class="columna" data-libre="veh" aria-label="Vehículos sin asignar">
           <h2>Vehículos sin asignar <span class="insignia">${libresVeh.length}</span></h2>

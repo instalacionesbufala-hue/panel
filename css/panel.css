@@ -152,6 +152,9 @@ tfoot td { font-weight: 700; border-top: 2px solid var(--borde); }
 .lista-fichas { display: grid; gap: .5rem; min-height: 60px; }
 .unidades { display: grid; grid-template-columns: repeat(auto-fill, minmax(260px, 1fr)); gap: .75rem; }
 .unidad { background: var(--superficie); border: 1px solid var(--borde); border-radius: var(--radio); padding: .75rem; display: grid; gap: .5rem; box-shadow: var(--sombra); }
+.zona-titulo { font-size: .95rem; color: var(--tenue); margin: 0 0 .5rem; }
+.unidades + .zona-titulo { margin-top: 1.25rem; }
+.unidad.no-productiva { border-style: dashed; }
 .unidad.cambiada { border-color: var(--acento); box-shadow: 0 0 0 1px var(--acento); }
 .unidad header { display: flex; justify-content: space-between; align-items: baseline; gap: .5rem; }
 .hueco { border: 1px dashed var(--borde); border-radius: 6px; padding: .5rem; display: grid; gap: .4rem; min-height: 52px; }

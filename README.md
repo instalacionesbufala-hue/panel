@@ -2,7 +2,7 @@
 
 Interfaz web para configurar la operación: técnicos, vehículos, unidades, combustible, costes de personal y liquidación mensual. Son ficheros estáticos (HTML, CSS y JavaScript nativo), sin compilación y sin dependencias. Toda la información vive en el backend de Apps Script; el panel no guarda datos propios.
 
-> **Estado (23/09/2026): modo demostración.** El backend (v3.20.12) solo tiene el acceso (`panelLogin`). **Todo lo demás se sirve con datos de ejemplo** definidos en `js/api.js`, con la forma exacta del contrato. Esos datos viven solo en memoria: se pierden al recargar y no se envían a ningún sitio. Una franja amarilla lo recuerda en todas las pantallas.
+> **Estado (23/09/2026): modo demostración parcial.** En producción: el acceso (`panelLogin`) y la configuración (`panelConfig`, solo lectura). **Todo lo demás se sirve con datos de ejemplo** definidos en `js/api.js`, con la forma exacta del contrato. Esos datos viven solo en memoria: se pierden al recargar y no se envían a ningún sitio. Una franja amarilla lo recuerda en todas las pantallas.
 
 ## Qué va a producción: lo decide el backend
 
@@ -30,6 +30,7 @@ js/combustible.js     asignar facturas de combustible a vehículos
 js/costes.js          volcar los costes de la gestoría
 js/tecnicos.js        altas, bajas y edición de técnicos, vehículos y unidades
 js/liquidacion.js     liquidación mensual (solo lectura)
+subir-version.mjs     sube el ?v=N de index.html y de todos los import (ejecutar antes de publicar)
 BACKEND.md            CONTRATO con el backend (lo mantiene el backend; es la fuente de verdad)
 DECISIONES.md         decisiones del panel y dudas abiertas para el backend
 ```
@@ -53,7 +54,7 @@ Ahora mismo apunta a la implementación activa. Si se publica una implementació
 
 La página lleva `noindex` para que los buscadores no la indexen. Aun así, la protección real es la contraseña, que valida el backend.
 
-**Al cambiar un fichero**, sube el número `?v=` de `index.html`. Los módulos que importa `app.js` no llevan número: GitHub Pages los guarda en caché unos 10 minutos, así que tras publicar puede hacer falta esperar o forzar la recarga (Ctrl+F5).
+**Al cambiar un fichero**, sube la versión con `node subir-version.mjs`. El script pone el mismo `?v=N` en `index.html` y en todos los `import` de `js/`. Así, tras publicar, el navegador no mezcla módulos nuevos con copias viejas guardadas en caché. GitHub Pages las guarda unos 10 minutos.
 
 ## Probar en local
 

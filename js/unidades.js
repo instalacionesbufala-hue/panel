@@ -1,11 +1,15 @@
 // Pantalla de unidades: formar unidades arrastrando técnicos y vehículos.
-import * as api from './api.js?v=10';
-import { esc, fecha, hoy, vigente, avisar, preguntar, cajaError, listaAvisos } from './ui.js?v=10';
+import * as api from './api.js?v=11';
+import { esc, fecha, hoy, vigente, avisar, preguntar, cajaError, listaAvisos } from './ui.js?v=11';
 
 const LIBRE = '__libre__';
 // El rol no restringe nada (BACKEND.md): cualquier técnico va a cualquier unidad. Solo se avisa
 // cuando la combinación parece rara; decide quien usa el panel.
 const ROLES_NO_PRODUCTIVOS = ['SAT', 'Gerencia'];
+// Iniciales y color estable por persona, para las fichas
+const COLORES_AVATAR = ['#3B5BF0', '#12B3A0', '#F0609A', '#7C6CF6', '#E39A1B', '#1F8FD6', '#D9467A', '#4E9E3A'];
+const iniciales = n => String(n || '?').split(/\s+/).filter(x => /\p{L}/u.test(x)).slice(0, 2).map(x => x[0]).join('').toUpperCase() || '?';
+const colorDe = id => COLORES_AVATAR[[...String(id)].reduce((h, c) => (h * 31 + c.charCodeAt(0)) >>> 0, 7) % COLORES_AVATAR.length];
 // Unidades no productivas (SAT, Estructura): zona aparte y sin límite de técnicos por unidad
 const esNoProductiva = u => u?.tipo === 'no_productiva';
 
@@ -191,16 +195,18 @@ export function montar(el) {
   function fichaTec(id) {
     const t = tec(id) || { id, nombre: id };
     return `<div class="ficha tecnico" ${soloLectura() ? '' : 'draggable="true"'} data-tipo="tec" data-id="${esc(id)}">
-      <span class="nombre">${esc(t.nombre)}</span>
-      <span class="detalle">${esc(t.id)}${t.grupo ? ' · grupo ' + esc(t.grupo) : ''}${t.rol ? ' · ' + esc(t.rol) : ''}</span>
+      <span class="avatar" style="background:${colorDe(t.id)}" aria-hidden="true">${esc(iniciales(t.nombre))}</span>
+      <span class="datos"><span class="nombre">${esc(t.nombre)}</span>
+      <span class="detalle">${t.rol ? esc(t.rol) + ' · ' : ''}${esc(t.id)}${t.grupo ? ' · ' + esc(t.grupo) : ''}</span></span>
       ${selectorMover('tec', id, unidadDeTec(borrador, id))}
     </div>`;
   }
   function fichaVeh(mat) {
     const v = veh(mat) || { matricula: mat };
     return `<div class="ficha vehiculo" ${soloLectura() ? '' : 'draggable="true"'} data-tipo="veh" data-id="${esc(mat)}">
-      <span class="nombre">${esc(v.matricula)}</span>
-      <span class="detalle">${esc(v.modelo || '')}${v.brigada ? ' · ' + esc(v.brigada) : ''}</span>
+      <span class="placa${v.sinMatricula ? ' sin' : ''}"><b>${esc(v.matricula)}</b></span>
+      <span class="datos"><span class="nombre">${esc(v.modelo || 'Vehículo')}</span>
+      <span class="detalle">${v.brigada ? esc(v.brigada) : '&nbsp;'}</span></span>
       ${v.sinMatricula ? '<span class="insignia aviso" title="El recurso no tiene matrícula legible: se usa su código interno">sin matrícula</span>' : ''}
       ${selectorMover('veh', mat, unidadDeVeh(borrador, mat))}
     </div>`;
@@ -233,7 +239,7 @@ export function montar(el) {
     const tarjeta = ([u, c]) => `
               <article class="unidad ${!lectura && unidadCambiada(u) ? 'cambiada' : ''} ${esNoProductiva(unidad(u)) ? 'no-productiva' : ''}">
                 <header><h3>${esc(nombreUnidad(u))}</h3>
-                  ${unidad(u)?.computaVariable === false ? '<span class="insignia" title="Esta unidad y sus técnicos quedan fuera del cálculo del variable">no computa variable</span>' : ''}
+                  ${unidad(u)?.computaVariable === false ? '<span class="insignia rosa" title="Esta unidad y sus técnicos quedan fuera del cálculo del variable">no computa variable</span>' : ''}
                   <span class="insignia">${c.tecs.length === 0 ? 'sin técnicos' : c.tecs.length === 1 ? '1 técnico' : c.tecs.length + ' técnicos'}</span></header>
                 ${c.choques.length ? `<p class="insignia error">Dato incoherente en el servidor: ${esc(c.choques.join('; '))}</p>` : ''}
                 <div class="hueco" data-unidad="${esc(u)}" data-acepta="tec">
@@ -247,6 +253,29 @@ export function montar(el) {
               </article>`;
     const brigadas = [...borrador].filter(([u]) => !esNoProductiva(unidad(u)));
     const noProductivas = [...borrador].filter(([u]) => esNoProductiva(unidad(u)));
+    // Resumen del día (solo recuentos de la composición, ningún importe)
+    const totalTec = tecnicosVisibles().length, totalVeh = vehiculosVisibles().length;
+    const limite = cfg.limites?.tecnicosPorUnidad;
+    const completas = brigadas.filter(([, c]) => limite ? c.tecs.length >= limite : c.tecs.length > 0).length;
+    const pct = (a, b) => b ? Math.round(a / b * 100) : 0;
+    const r = 40, vuelta = 2 * Math.PI * r;
+    const resumen = `<div class="bento" aria-label="Resumen del día">
+        <div class="kpi heroe">
+          <svg class="anillo" viewBox="0 0 96 96" aria-hidden="true"><defs><linearGradient id="grad-anillo" x1="0" y1="0" x2="1" y2="1"><stop offset="0" stop-color="#12B3A0"/><stop offset="1" stop-color="#F0609A"/></linearGradient></defs>
+            <circle class="pista" cx="48" cy="48" r="${r}" fill="none" stroke-width="11"/>
+            <circle cx="48" cy="48" r="${r}" fill="none" stroke="url(#grad-anillo)" stroke-width="11" stroke-linecap="round"
+              stroke-dasharray="${(vuelta * pct(asignadosTec.size, totalTec) / 100).toFixed(1)} ${vuelta.toFixed(1)}" transform="rotate(-90 48 48)"/></svg>
+          <div><small>Plantilla asignada · ${esc(fecha(dia))}</small>
+            <div class="cifra">${asignadosTec.size}<span> de ${totalTec}</span></div>
+            <p>${libresTec.length ? `${libresTec.length} técnico${libresTec.length === 1 ? '' : 's'} sin unidad.` : 'Toda la plantilla tiene unidad.'}
+              ${brigadas.filter(([, c]) => !c.tecs.length).length ? ' Hay brigadas vacías.' : ''}</p></div>
+        </div>
+        <div class="kpi"><small>Brigadas completas</small><div class="cifra">${completas}<span> / ${brigadas.length}</span></div>
+          <div class="medidor"><i style="width:${pct(completas, brigadas.length)}%"></i></div></div>
+        <div class="kpi ${filas.length ? 'aviso' : ''}"><small>${lectura ? 'Vehículos en uso' : 'Cambios sin guardar'}</small>
+          <div class="cifra">${lectura ? `${asignadosVeh.size}<span> / ${totalVeh}</span>` : filas.length}</div>
+          ${lectura ? `<div class="medidor"><i style="width:${pct(asignadosVeh.size, totalVeh)}%"></i></div>` : `<span class="tenue">Vehículos en uso: ${asignadosVeh.size} de ${totalVeh}</span>`}</div>
+      </div>`;
 
     el.innerHTML = `
       <div class="barra">
@@ -268,6 +297,7 @@ export function montar(el) {
              <button class="boton" data-accion="guardar" ${filas.length && !guardando ? '' : 'disabled'}>${guardando ? 'Guardando…' : 'Guardar composición'}</button>
            </div>`}
       ${errorGuardado ? cajaError(errorGuardado, 'El servidor no ha aceptado el cambio') : ''}
+      ${resumen}
       <div class="tablero ${lectura ? 'solo-lectura' : ''}">
         <section class="columna" data-libre="tec" aria-label="Técnicos sin asignar">
           <h2>Técnicos sin asignar <span class="insignia">${libresTec.length}</span></h2>

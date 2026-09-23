@@ -1,6 +1,6 @@
 // Liquidación mensual: solo lectura. El cálculo lo hace el backend; aquí solo se muestra.
-import * as api from './api.js?v=10';
-import { esc, eur, mesActual, nombreMes, cajaError, selectorMes } from './ui.js?v=10';
+import * as api from './api.js?v=11';
+import { esc, eur, mesActual, nombreMes, cajaError, selectorMes } from './ui.js?v=11';
 
 export function montar(el) {
   let mes = mesActual();

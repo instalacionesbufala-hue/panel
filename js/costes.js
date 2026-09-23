@@ -1,8 +1,10 @@
 // Pantalla de costes de personal: volcar el coste de empresa que entrega la gestoría.
-import * as api from './api.js?v=10';
-import { esc, mesActual, sumarMeses, nombreMes, vigenteEnMes, leerImporte, importeEditable, avisar, cajaError, selectorMes } from './ui.js?v=10';
+import * as api from './api.js?v=11';
+import { esc, mesActual, sumarMeses, nombreMes, vigenteEnMes, leerImporte, importeEditable, avisar, cajaError, selectorMes } from './ui.js?v=11';
 
-const ORIGEN_REAL = 'gestoria';
+// origen: 'gestoria' (nómina), 'manual' (corregido a mano) o 'estimacion' (coste de referencia, solo lectura)
+const ORIGENES_REALES = ['gestoria', 'manual'];
+const esReal = c => ORIGENES_REALES.includes(c?.origen);
 const MESES_HISTORICO = 6;
 
 export function montar(el) {
@@ -13,6 +15,7 @@ export function montar(el) {
   let guardando = false;
   let filas = new Map();      // idTec → { texto, estado: 'guardado'|'sugerido'|'editado'|'vacio', sugerencia }
   let informeCsv = null;
+  let origen = 'gestoria';    // con qué origen se guarda lo tecleado
 
   const cambiadas = () => [...filas].filter(([, f]) => f.estado === 'editado');
   const mesesHistorico = () => Array.from({ length: MESES_HISTORICO }, (_, i) => sumarMeses(mes, -i)).reverse();
@@ -39,9 +42,13 @@ export function montar(el) {
       const escrita = previas.get(t.id);
       if (escrita && escrita.estado === 'editado') { filas.set(t.id, escrita); continue; }   // no se pierde lo tecleado
       const actual = costeDe(mes, t.id);
-      const sugerencia = costeDe(sumarMeses(mes, -1), t.id)?.costeEmpresaMes ?? null;
-      if (actual && actual.origen === ORIGEN_REAL) filas.set(t.id, { texto: importeEditable(actual.costeEmpresaMes), estado: 'guardado', sugerencia });
-      else if (sugerencia !== null) filas.set(t.id, { texto: importeEditable(sugerencia), estado: 'sugerido', sugerencia });
+      const anterior = costeDe(sumarMeses(mes, -1), t.id);
+      // Sugerencia: el mes anterior si es real; si no, la estimación que manda el backend
+      const [sugerencia, fuente] = esReal(anterior) ? [anterior.costeEmpresaMes, 'mes anterior']
+        : actual?.origen === 'estimacion' ? [actual.costeEmpresaMes, 'coste de referencia']
+        : anterior ? [anterior.costeEmpresaMes, 'mes anterior'] : [null, ''];
+      if (esReal(actual)) filas.set(t.id, { texto: importeEditable(actual.costeEmpresaMes), estado: 'guardado', origen: actual.origen, sugerencia });
+      else if (sugerencia !== null) filas.set(t.id, { texto: importeEditable(sugerencia), estado: 'sugerido', fuente, sugerencia });
       else filas.set(t.id, { texto: '', estado: 'vacio', sugerencia });
     }
   }
@@ -53,7 +60,7 @@ export function montar(el) {
     if (!caja || !rango) return;
     caja.innerHTML = mesesHistorico().map(m => {
       const tecs = tecnicosDelMes(m);
-      const reales = tecs.filter(t => costeDe(m, t.id)?.origen === ORIGEN_REAL).length;
+      const reales = tecs.filter(t => esReal(costeDe(m, t.id))).length;
       const [clase, texto] = !tecs.length ? ['', 'sin técnicos']
         : reales === tecs.length ? ['ok', 'coste real']
         : reales ? ['aviso', `estimación (${reales} de ${tecs.length} reales)`]
@@ -75,7 +82,7 @@ export function montar(el) {
     if (!costes.length) return;
     guardando = true; errorGuardado = null; pintar();
     try {
-      const r = await api.guardarCostes(mes, costes, ORIGEN_REAL);
+      const r = await api.guardarCostes(mes, costes, origen);
       (r.avisos || []).forEach(a => avisar(String(a), 'aviso', 12000));
       avisar(`Costes de ${nombreMes(mes)} guardados (${costes.length} técnico${costes.length === 1 ? '' : 's'}).`);
       for (const [id] of cambiadas()) filas.get(id).estado = 'guardado';
@@ -136,6 +143,11 @@ export function montar(el) {
           <input type="file" id="csv" accept=".csv,.txt,text/csv" hidden></label>
         ${sugeridas ? `<button class="boton secundario" data-accion="aceptar-todas">Dar por buenas las ${sugeridas} sugerencias</button>` : ''}
         <span class="empuje"></span>
+        <label class="en-linea">Guardar como
+          <select id="origen">
+            <option value="gestoria" ${origen === 'gestoria' ? 'selected' : ''}>Dato de la nómina</option>
+            <option value="manual" ${origen === 'manual' ? 'selected' : ''}>Corrección manual</option>
+          </select></label>
         ${hayCambios ? `<button class="boton secundario" data-accion="descartar" ${guardando ? 'disabled' : ''}>Descartar</button>` : ''}
         <button class="boton" data-accion="guardar" ${hayCambios && !guardando ? '' : 'disabled'}>${guardando ? 'Guardando…' : 'Guardar costes'}</button>
       </div>
@@ -144,8 +156,8 @@ export function montar(el) {
         <tbody>${tecnicosDelMes().map(t => {
           const f = filas.get(t.id);
           const estado = {
-            guardado: '<span class="insignia ok">coste real guardado</span>',
-            sugerido: `<span class="insignia sugerido">sugerencia: mes anterior</span> <button class="boton secundario mini" data-accion="confirmar" data-id="${esc(t.id)}">Confirmar</button>`,
+            guardado: `<span class="insignia ok">${f.origen === 'manual' ? 'corregido a mano' : 'coste de nómina'}</span>`,
+            sugerido: `<span class="insignia sugerido">sugerencia: ${esc(f.fuente)}</span> <button class="boton secundario mini" data-accion="confirmar" data-id="${esc(t.id)}">Confirmar</button>`,
             editado: '<span class="insignia aviso">sin guardar</span>',
             vacio: '<span class="insignia">pendiente</span>',
           }[f.estado];
@@ -182,6 +194,8 @@ export function montar(el) {
       if (cambiadas().length && !confirm('Hay costes sin guardar. ¿Cambiar de mes y descartarlos?')) { t.value = mes; return; }
       mes = t.value; filas = new Map(); rango = null; informeCsv = null; errorGuardado = null;
       recargar();
+    } else if (t.id === 'origen') {
+      origen = t.value;
     } else if (t.id === 'csv' && t.files[0]) {
       importarCsv(await t.files[0].text());
     }

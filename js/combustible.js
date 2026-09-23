@@ -1,6 +1,6 @@
-// Pantalla de combustible: asignar cada factura a un vehículo.
-import * as api from './api.js?v=10';
-import { esc, eur, fecha, mesActual, sumarMeses, nombreMes, vigenteEnMes, avisar, cajaError, selectorMes } from './ui.js?v=10';
+// Pantalla de combustible: asignar cada gasto de vehículo (combustible, renting, mantenimiento) a su matrícula.
+import * as api from './api.js?v=11';
+import { esc, eur, fecha, mesActual, sumarMeses, nombreMes, vigenteEnMes, avisar, cajaError, selectorMes } from './ui.js?v=11';
 
 const SIN = '';
 // Los tipos de proveedor los manda el backend en panelCompras.tiposProveedor (texto u objeto { valor, etiqueta })
@@ -33,7 +33,9 @@ export function montar(el) {
     pintar();
   }
 
-  const deCombustible = r => (r?.facturas || []).filter(f => f.tipo === 'combustible');
+  // panelAsignarCombustible vale para cualquier gasto de vehículo (BACKEND.md v3.20.21)
+  const TIPOS_VEHICULO = ['combustible', 'vehiculo'];
+  const deCombustible = r => (r?.facturas || []).filter(f => TIPOS_VEHICULO.includes(f.tipo));
   const matriculaDe = f => pendientes.has(f.id) ? pendientes.get(f.id) : (f.matricula || SIN);
   const vehiculosDelMes = () => cfg.vehiculos.filter(v => vigenteEnMes(v.desde, v.hasta, mes));
 
@@ -71,7 +73,10 @@ export function montar(el) {
     try {
       await api.clasificarProveedor(proveedor, tipo);
       const t = (compras.tiposProveedor || []).find(x => valorTipo(x) === tipo);
-      avisar(`«${proveedor}» queda clasificado como «${t ? etiquetaTipo(t) : tipo}». Sus próximas facturas entrarán solas.`);
+      const esLinea = (compras.sinClasificar || []).some(f => f.proveedor === proveedor && f.esLinea);
+      avisar(esLinea
+        ? `La línea «${proveedor}» queda clasificada como «${t ? etiquetaTipo(t) : tipo}». Las próximas líneas con ese texto entrarán solas.`
+        : `«${proveedor}» queda clasificado como «${t ? etiquetaTipo(t) : tipo}». Sus próximas facturas entrarán solas.`);
       clasificando.delete(proveedor);
       await recargar();
       return;
@@ -90,6 +95,7 @@ export function montar(el) {
     return `<tr class="${sinAsignar ? 'destacada' : ''}" draggable="true" data-factura="${esc(f.id)}">
       <td>${fecha(f.fecha)}</td>
       <td>${esc(f.proveedor)}</td>
+      <td><span class="insignia">${f.tipo === 'combustible' ? 'combustible' : 'renting o mant.'}</span></td>
       <td>${esc(f.numero || '')}</td>
       <td class="num">${eur(f.importeSinIva)}</td>
       <td>
@@ -105,7 +111,7 @@ export function montar(el) {
 
   function pintar(cargando = false) {
     const cabecera = `<div class="barra">
-        <div><h1>Combustible</h1><p class="tenue">Los tickets no traen matrícula: cada factura necesita su vehículo.</p></div>
+        <div><h1>Combustible y vehículos</h1><p class="tenue">Cada gasto de vehículo necesita su matrícula. Los rentings con la matrícula en el texto llegan ya asignados.</p></div>
         <span class="empuje"></span>${selectorMes('mes', mes)}
       </div>`;
     if (cargando && !compras) { el.innerHTML = cabecera + '<p class="cargando">Cargando facturas…</p>'; return; }
@@ -120,6 +126,7 @@ export function montar(el) {
     const asignadas = facturas.filter(f => matriculaDe(f));
     const vehs = vehiculosDelMes();
     const tot = totales(facturas, true);
+    const totComb = totales(facturas.filter(f => f.tipo === 'combustible'), true);
     const totAnt = totales(deCombustible(comprasAnt), false);
     const matriculas = [...new Set([...vehs.map(v => v.matricula), ...[...tot.keys()].filter(Boolean)])];
 
@@ -127,7 +134,7 @@ export function montar(el) {
     // Proveedores sin clasificar, agrupados
     const porProveedor = new Map();
     for (const f of compras.sinClasificar || []) {
-      const p = porProveedor.get(f.proveedor) || { n: 0, total: 0 };
+      const p = porProveedor.get(f.proveedor) || { n: 0, total: 0, esLinea: !!f.esLinea };
       p.n++; p.total += Number(f.importeSinIva || 0);
       porProveedor.set(f.proveedor, p);
     }
@@ -143,8 +150,9 @@ export function montar(el) {
           ${matriculas.map(m => {
             const actual = tot.get(m) || 0, ant = totAnt.get(m) || 0, dif = Math.round((actual - ant) * 100) / 100;
             return `<div class="destino" data-matricula="${esc(m)}">
-              <strong>${esc(m)}</strong> <span class="tenue">${esc(veh(m)?.modelo || '')}</span>
+              <div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap"><span class="placa${veh(m)?.sinMatricula ? ' sin' : ''}"><b>${esc(m)}</b></span> <span class="tenue">${esc(veh(m)?.modelo || '')}</span></div>
               <div class="importe">${eur(actual)}</div>
+              ${actual ? `<div class="tenue">Combustible ${eur(totComb.get(m) || 0)} · renting y mant. ${eur(Math.round((actual - (totComb.get(m) || 0)) * 100) / 100)}</div>` : ''}
               <div class="tenue">Mes anterior: ${eur(ant)}
                 ${ant || actual ? `<span class="diferencia ${dif > 0 ? 'sube' : dif < 0 ? 'baja' : ''}">(${dif > 0 ? '+' : ''}${eur(dif)})</span>` : ''}</div>
             </div>`;
@@ -155,7 +163,7 @@ export function montar(el) {
 
       <section class="bloque">
         <div class="barra" style="align-items:center">
-          <h2 style="margin:0">Facturas de combustible</h2>
+          <h2 style="margin:0">Gastos de vehículo</h2>
           <span class="empuje"></span>
           ${pendientes.size ? `<span class="insignia sugerido">${pendientes.size} sin guardar</span>
             <button class="boton secundario" data-accion="descartar" ${guardando ? 'disabled' : ''}>Descartar</button>` : ''}
@@ -163,8 +171,8 @@ export function montar(el) {
         </div>
         ${sinAsignar.length ? `<div class="caja-aviso"><strong>${sinAsignar.length} factura${sinAsignar.length === 1 ? '' : 's'} sin vehículo.</strong> Mientras no se asignen, el coste de vehículo de la liquidación no será correcto.</div>` : ''}
         <div class="tabla-scroll"><table>
-          <thead><tr><th>Fecha</th><th>Proveedor</th><th>Número</th><th class="num">Importe sin IVA</th><th>Vehículo</th></tr></thead>
-          <tbody>${[...sinAsignar, ...asignadas].map(f => filaFactura(f, vehs)).join('') || '<tr><td colspan="5" class="vacio">No hay facturas de combustible este mes.</td></tr>'}</tbody>
+          <thead><tr><th>Fecha</th><th>Proveedor</th><th>Tipo</th><th>Número</th><th class="num">Importe sin IVA</th><th>Vehículo</th></tr></thead>
+          <tbody>${[...sinAsignar, ...asignadas].map(f => filaFactura(f, vehs)).join('') || '<tr><td colspan="6" class="vacio">No hay gastos de vehículo este mes.</td></tr>'}</tbody>
         </table></div>
       </section>
 
@@ -174,7 +182,7 @@ export function montar(el) {
         <div class="tabla-scroll"><table>
           <thead><tr><th>Proveedor</th><th class="num">Facturas</th><th class="num">Importe sin IVA</th><th>Clasificar como</th></tr></thead>
           <tbody>${[...porProveedor].map(([p, d]) => `<tr>
-            <td>${esc(p)}</td><td class="num">${d.n}</td><td class="num">${eur(d.total)}</td>
+            <td>${esc(p)}${d.esLinea ? ' <span class="insignia" title="Línea de una factura de proveedor mixto: se guarda como regla para ese texto">línea de factura mixta</span>' : ''}</td><td class="num">${d.n}</td><td class="num">${eur(d.total)}</td>
             <td><div class="botones-tipo">${tipos.map(t => `<button class="boton secundario mini" data-accion="clasificar" data-proveedor="${esc(p)}" data-tipo="${esc(valorTipo(t))}" ${clasificando.has(p) ? 'disabled' : ''}>${esc(etiquetaTipo(t))}</button>`).join('') || '<span class="tenue">El servidor no ha enviado los tipos de proveedor.</span>'}</div></td>
           </tr>`).join('')}</tbody>
         </table></div>

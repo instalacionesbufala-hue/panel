@@ -312,13 +312,17 @@ function crearDemo() {
         { id: 'd3', fecha: `${M}-12`, proveedor: 'BALLENOIL SA', tipo: 'combustible', importeSinIva: 90.00, matricula: null, numero: 'F-2026-1301' },
         { id: 'd4', fecha: `${M}-02`, proveedor: 'CEPSA', tipo: 'combustible', importeSinIva: 70.00, matricula: '1111AAA', numero: 'C-0001' },
         { id: 'd5', fecha: `${M}-15`, proveedor: 'ELECTROSUR', tipo: 'material', importeSinIva: 300, matricula: null, numero: 'E-0005' },
+        { id: 'd9#0', fecha: `${M}-05`, proveedor: 'RENTING EJEMPLO SL · Renting Citroën Berlingo 2222BBB', tipo: 'vehiculo', importeSinIva: 391.58, matricula: '2222BBB', numero: 'R-77' },
       ],
       [P]: [
         { id: 'd6', fecha: `${P}-10`, proveedor: 'CEPSA', tipo: 'combustible', importeSinIva: 120, matricula: '1111AAA', numero: 'C-0000' },
         { id: 'd7', fecha: `${P}-11`, proveedor: 'CEPSA', tipo: 'combustible', importeSinIva: 60, matricula: '2222BBB', numero: 'C-0002' },
       ],
     },
-    sinClasificar: { [M]: [{ id: 'd8', fecha: `${M}-10`, proveedor: 'GASOLINERA NUEVA SL', importeSinIva: 45.5 }] },
+    sinClasificar: { [M]: [
+      { id: 'd8', fecha: `${M}-10`, proveedor: 'GASOLINERA NUEVA SL', importeSinIva: 45.5, esLinea: false },
+      { id: 'd10#1', fecha: `${M}-11`, proveedor: 'TIENDA ONLINE SL · Cargador de baterías', importeSinIva: 29.9, esLinea: true },
+    ] },
     // Costes de empresa ya volcados por la gestoría, por mes: idTec → importe
     costes: { [P]: { T01: 2579.29, T02: 2310.4, T03: 2598.75, T06: 2490.1 } },
     excepciones: { [M]: [{ tipo: 'obra sin ejecutantes', detalle: 'E2631532 · 619,05 €' }] },
@@ -362,7 +366,9 @@ function demoResponder(accion, params, p) {
     case 'panelCostes':
       return { ok: true, desde: params.desde, hasta: params.hasta, costes: Object.entries(demo.costes)
         .filter(([m]) => m >= params.desde && m <= params.hasta)
-        .flatMap(([m, c]) => Object.entries(c).map(([idTec, costeEmpresaMes]) => ({ mes: m, idTec, costeEmpresaMes, origen: 'gestoria' }))) };
+        .flatMap(([m, c]) => Object.entries(c).map(([idTec, costeEmpresaMes]) => ({ mes: m, idTec, costeEmpresaMes, origen: 'gestoria' })))
+        .concat(demo.tecnicos.filter(t => vig(t.alta, t.baja, `${params.hasta}-01`) && !demo.costes[params.hasta]?.[t.id])
+          .map(t => ({ mes: params.hasta, idTec: t.id, costeEmpresaMes: 2400, origen: 'estimacion' }))) };
     case 'panelLiquidacion':
       return demoLiquidacion(params.mes);
     case 'panelGuardarConfig': {

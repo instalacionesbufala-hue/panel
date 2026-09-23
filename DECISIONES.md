@@ -1,6 +1,14 @@
 # Decisiones del panel y dudas para el backend
 
-**El contrato vive en [`BACKEND.md`](BACKEND.md)**, lo mantiene el backend y manda sobre este fichero. Aquí queda lo que decide el panel por su cuenta y lo que el panel pregunta. Revisado contra BACKEND.md **v3.20.18** (`Panel_Config.gs` v1.3) el 23/09/2026.
+**El contrato vive en [`BACKEND.md`](BACKEND.md)**, lo mantiene el backend y manda sobre este fichero. Aquí queda lo que decide el panel por su cuenta y lo que el panel pregunta. Revisado contra BACKEND.md **v3.20.21** el 23/09/2026.
+
+## Compras y costes en producción — hecho (v3.20.21)
+
+El panel usa en producción lo que anuncia `ping.accionesPanel`, así que Combustible y Costes de personal ya leen y guardan en el sistema real sin tocar `api.js`. Ajustes al contrato:
+
+- **Combustible y vehículos.** La pantalla muestra los gastos de tipo `combustible` y `vehiculo` (renting y mantenimiento), con una columna «Tipo». El resumen por vehículo separa combustible de renting y mantenimiento. `panelAsignarCombustible` se usa para los dos.
+- **Líneas de proveedores mixtos.** Las de `sinClasificar` con `esLinea: true` llevan la marca «línea de factura mixta», y el aviso al clasificar habla de «las próximas líneas con ese texto». Se envía `proveedor` tal cual llega.
+- **Costes.** `gestoria` y `manual` cuentan como coste real («coste de nómina» / «corregido a mano»). `estimacion` nunca se guarda: se ofrece como sugerencia («coste de referencia») cuando el mes anterior no tiene dato real. Al guardar se elige el origen: «Dato de la nómina» (`gestoria`, por defecto) o «Corrección manual» (`manual`).
 
 ## Peticiones de una en una — hecho (v3.20.18)
 

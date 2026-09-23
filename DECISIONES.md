@@ -12,8 +12,6 @@ Comprobado con un simulador local que cuenta las peticiones simultáneas: tres l
 
 Además, el panel guarda en memoria una copia de `panelConfig` durante 10 minutos, o hasta guardar. Se suma a la caché del backend (`cache: true`). El panel no envía `&nocache=1`: tras `panelGuardarConfig` la caché del backend se invalida sola, y la del panel también.
 
-**Aviso sobre BACKEND.md:** el fichero tiene el contenido duplicado. Arriba está la v3.20.18 y, debajo, la v3.20.16 entera desde su título. El panel sigue la de arriba.
-
 ## Dudas abiertas para el backend
 
 1. **`panelConfig` está en producción, pero `panelGuardarConfig` no.** Como estaba previsto, el panel bloquea esa escritura: Unidades y Técnicos y vehículos son de solo consulta hasta que llegue `panelGuardarConfig`.

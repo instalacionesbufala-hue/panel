@@ -37,6 +37,7 @@ $('#form-acceso').addEventListener('submit', async ev => {
   boton.textContent = 'Comprobando…';
   try {
     await api.entrar(clave);
+    pintarFranjaDemo();
     $('#clave').value = '';
     $('#acceso').hidden = true;
     $('#salir').hidden = false;
@@ -56,12 +57,21 @@ $('#form-acceso').addEventListener('submit', async ev => {
 
 api.alPedirAcceso(pedirAcceso);
 
-// Aviso permanente mientras alguna acción se sirva con datos de ejemplo
-if (api.hayDemostracion()) {
-  const d = $('#franja-demo');
-  d.innerHTML = '<strong>Modo demostración.</strong> El acceso es real, pero los datos son de ejemplo: lo que guardes se queda en esta pestaña y se pierde al recargar. No se envía nada al sistema de gestión.';
-  d.hidden = false;
+// Aviso permanente mientras alguna acción se sirva con datos de ejemplo (la lista la da el ping del backend)
+function pintarFranjaDemo() {
+  api.accionesEnProduccion().then(reales => {
+    const d = $('#franja-demo');
+    const demo = api.TODAS.filter(a => !reales.has(a));
+    d.hidden = demo.length === 0;
+    if (!demo.length) return;
+    const datosReales = [...reales].filter(a => a !== 'panelLogin');
+    d.innerHTML = '<strong>Modo demostración.</strong> '
+      + (datosReales.length
+        ? `Van al sistema de gestión: ${datosReales.join(', ')}. El resto usa datos de ejemplo, que se pierden al recargar.`
+        : 'El acceso es real, pero los datos son de ejemplo: lo que guardes se queda en esta pestaña y se pierde al recargar. No se envía nada al sistema de gestión.');
+  }).catch(() => { /* sin conexión: ya lo avisa la franja de conexión; se reintenta al entrar */ });
 }
+pintarFranjaDemo();
 
 $('#salir').addEventListener('click', () => {
   if (vistaActual?.control?.pendiente?.() && !confirm('Hay cambios sin guardar. ¿Cerrar la sesión igualmente?')) return;

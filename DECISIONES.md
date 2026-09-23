@@ -4,9 +4,12 @@ Estado a 23/09/2026. Lo marcado como **acordado** lo ha confirmado el backend. L
 
 ## Qué va a producción
 
-Solo las acciones del conjunto `EN_PRODUCCION` de `js/api.js`. Hoy solo `panelLogin`. El resto se sirve en **modo demostración**, con datos de ejemplo en memoria y la forma del contrato. Durante el desarrollo no se llama a producción con nada; las pruebas se hacen con la demostración y con `fetch` interceptado en el navegador.
+**Acordado (v3.20.12):** al cargar la página, el panel pregunta `GET ?action=ping`, que devuelve `panel: true` y `accionesPanel`. Las acciones de esa lista van a producción; el resto se sirve en **modo demostración**, con datos de ejemplo en memoria y la forma del contrato. Hoy la lista es `["panelLogin"]`.
 
-En producción también existe `ping` (GET y POST), pero el panel no lo usa.
+- Solo se tienen en cuenta los nombres que el panel conoce. Si `panel` no es `true` o no llega la lista, todo va a la demostración y no se puede entrar.
+- El acceso nunca se simula.
+- Se pregunta una vez por carga de página. Si falla, se reintenta en la siguiente llamada.
+- Durante el desarrollo no se llama a producción con nada: las pruebas se hacen con un simulador local que sirve el panel con la URL del backend cambiada a `localhost`.
 
 ## 0. Incidente de la cola de cierres (cerrado)
 
@@ -64,4 +67,4 @@ El 22/09/2026, las pruebas de conexión enviaron 7 POST al backend v3.20.7, que 
 
 1. Backend: implementar `panelConfig`, `panelCompras`, `panelLiquidacion`, `panelCostes`, `panelGuardarConfig`, `panelAsignarCombustible`, `panelClasificarProveedor` y `panelCostesTecnico`.
 2. Confirmar los tres puntos «por confirmar»: `ids` en las altas, la forma de `panelCostes` y el formato de `tiposProveedor`.
-3. Pasar cada acción a `EN_PRODUCCION` cuando el backend la confirme, y probarla entonces.
+3. Cada acción que el backend añada a `accionesPanel` entra sola. Conviene probarla entonces contra datos reales.

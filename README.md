@@ -2,24 +2,27 @@
 
 Interfaz web para configurar la operación: técnicos, vehículos, unidades, combustible, costes de personal y liquidación mensual. Son ficheros estáticos (HTML, CSS y JavaScript nativo), sin compilación y sin dependencias. Toda la información vive en el backend de Apps Script; el panel no guarda datos propios.
 
-> **Estado (23/09/2026): modo demostración.** El acceso (`panelLogin`) es real y va contra el backend de producción. **Todo lo demás se sirve con datos de ejemplo** definidos en `js/api.js`, con la forma exacta del contrato. Esos datos viven solo en memoria: se pierden al recargar y no se envían a ningún sitio. Una franja amarilla lo recuerda en todas las pantallas.
+> **Estado (23/09/2026): modo demostración.** El backend (v3.20.12) solo tiene el acceso (`panelLogin`). **Todo lo demás se sirve con datos de ejemplo** definidos en `js/api.js`, con la forma exacta del contrato. Esos datos viven solo en memoria: se pierden al recargar y no se envían a ningún sitio. Una franja amarilla lo recuerda en todas las pantallas.
 
-## Pasar una acción a producción
+## Qué va a producción: lo decide el backend
 
-Solo cuando el backend confirme que la acción está implementada. Se añade su nombre al conjunto `EN_PRODUCCION` al principio de `js/api.js`:
+Al cargar la página, el panel pregunta `GET ?action=ping`. El backend responde `{ panel: true, accionesPanel: [...] }`:
 
-```js
-const EN_PRODUCCION = new Set(['panelLogin', 'panelConfig']);
-```
+- Las acciones que figuren en `accionesPanel` van a producción.
+- El resto se sirve en modo demostración.
+- El acceso nunca se simula: si `panelLogin` no figura en la lista, no se puede entrar.
+- Si el `ping` no responde, el panel avisa de que no hay conexión y vuelve a preguntar al intentar entrar.
 
-Desde ese momento esa acción deja de usar su demostración. Cuando estén todas, la franja desaparece sola. En las escrituras, el panel exige que la respuesta repita la acción (`"accion": "…"`); si no la repite, no da nada por guardado.
+**No hay que tocar el código del panel** cuando el backend añade una acción: basta con recargar la página. La franja amarilla indica qué acciones van ya al sistema de gestión y desaparece cuando van todas. En las escrituras, el panel exige que la respuesta repita la acción (`"accion": "…"`); si no la repite, no da nada por guardado.
+
+Conviene que el backend active juntas las acciones que se leen y escriben sobre lo mismo (por ejemplo `panelConfig` y `panelGuardarConfig`). Si no, una pantalla podría leer datos reales y guardar en la demostración.
 
 ## Estructura
 
 ```
 index.html            entrada, navegación y pantalla de acceso
 css/panel.css
-js/api.js             ÚNICA capa que habla con el backend: URL, acciones en producción y datos de demostración
+js/api.js             ÚNICA capa que habla con el backend: URL, lista de acciones (vía ping) y datos de demostración
 js/app.js             navegación, acceso y aviso de conexión
 js/ui.js              utilidades de interfaz (formatos, diálogos, avisos)
 js/unidades.js        formar unidades arrastrando y soltando

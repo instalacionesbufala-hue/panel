@@ -3,14 +3,24 @@
 // URL de la implementación activa de Apps Script. Es el único sitio donde se configura.
 export const URL_BACKEND = 'https://script.google.com/macros/s/AKfycbxMMeyP9g75p1lxytithxeFfQVbe0cXV3aFHlJObfI05ewIN1mtTxPYBNPYp--BPKc9tw/exec';
 
-// Acciones que el backend ha CONFIRMADO como implementadas. Solo estas van a producción.
-// El resto se sirve en modo demostración con los datos de ejemplo de más abajo.
-// Cuando el backend confirme otra acción, se añade aquí y deja de usarse su demostración.
-const EN_PRODUCCION = new Set(['panelLogin']);
-
-const TODAS = ['panelLogin', 'panelConfig', 'panelCompras', 'panelLiquidacion', 'panelCostes', 'panelGuardarConfig',
+// Acciones del panel que conoce esta interfaz.
+export const TODAS = ['panelLogin', 'panelConfig', 'panelCompras', 'panelLiquidacion', 'panelCostes', 'panelGuardarConfig',
   'panelAsignarCombustible', 'panelClasificarProveedor', 'panelCostesTecnico'];
-export const hayDemostracion = () => TODAS.some(a => !EN_PRODUCCION.has(a));
+
+// Qué acciones van a producción lo dice el backend: GET ?action=ping devuelve
+// { panel: true, accionesPanel: [...] }. Las que figuren ahí van a producción; el resto se
+// sirve en modo demostración con los datos de ejemplo de más abajo. Así no hay que tocar
+// este fichero cada vez que el backend añade una acción.
+// Se pregunta una vez por carga de página; si falla, se vuelve a intentar en la siguiente llamada.
+let esperaAcciones = null;
+export function accionesEnProduccion() {
+  if (!esperaAcciones) {
+    esperaAcciones = aProduccion('ping', { conTestigo: false })
+      .then(r => new Set(r.panel === true && Array.isArray(r.accionesPanel) ? r.accionesPanel.filter(a => TODAS.includes(a)) : []))
+      .catch(e => { esperaAcciones = null; throw e; });
+  }
+  return esperaAcciones;
+}
 
 const CLAVE_TESTIGO = 'bufala-panel-testigo';
 const ESPERA_MAX_MS = 60000;
@@ -67,7 +77,9 @@ function esSesionCaducada(r) {
 }
 
 async function aProduccion(accion, { metodo = 'GET', params = {}, cuerpo = null, conTestigo = true } = {}) {
-  if (!EN_PRODUCCION.has(accion)) throw new ErrorApi(`La acción «${accion}» no está confirmada en el backend.`, 'contrato');
+  if (accion !== 'ping' && !(await accionesEnProduccion()).has(accion)) {
+    throw new ErrorApi(`La acción «${accion}» no figura entre las implementadas en el backend.`, 'contrato');
+  }
   const url = new URL(URL_BACKEND);
   const token = conTestigo ? testigoActual() : null;
   const opciones = { method: metodo, redirect: 'follow' };
@@ -126,7 +138,8 @@ async function aProduccion(accion, { metodo = 'GET', params = {}, cuerpo = null,
 }
 
 async function peticion(accion, opciones = {}) {
-  return EN_PRODUCCION.has(accion) ? aProduccion(accion, opciones) : demostracion(accion, opciones);
+  const enProduccion = await accionesEnProduccion();
+  return enProduccion.has(accion) ? aProduccion(accion, opciones) : demostracion(accion, opciones);
 }
 
 // Si la sesión caduca, se pide la contraseña encima de la vista y se repite la llamada.
@@ -144,7 +157,9 @@ async function llamar(accion, opciones) {
 
 // ── Acciones del contrato ──────────────────────────────
 export async function entrar(clave) {
-  const r = await peticion('panelLogin', { metodo: 'POST', cuerpo: { clave }, conTestigo: false });
+  // El acceso nunca se simula: si el backend no lo tiene, no se entra
+  if (!(await accionesEnProduccion()).has('panelLogin')) throw new ErrorApi('El servidor todavía no tiene activado el acceso al panel.', 'contrato');
+  const r = await aProduccion('panelLogin', { metodo: 'POST', cuerpo: { clave }, conTestigo: false });
   if (!r.token) throw new ErrorApi('El servidor no ha devuelto el testigo de sesión.', 'contrato');
   guardarTestigo(r.token, r.caduca);
   return r;

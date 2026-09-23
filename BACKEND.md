@@ -1,7 +1,7 @@
 # Contrato del backend — fuente de verdad
 
 Lo mantiene el backend. **Si algo de aquí contradice a `DECISIONES.md`, manda este fichero.**
-Última actualización: 23/09/2026 · backend **v3.20.18** (`Panel_Config.gs` v1.3).
+Última actualización: 23/09/2026 · backend **v3.20.21** (`Panel_Config.gs` v1.3, `Panel_Compras.gs` v1.0, `Panel_Costes.gs` v1.0).
 
 ## Cómo saber qué está disponible
 
@@ -9,7 +9,7 @@ Lo mantiene el backend. **Si algo de aquí contradice a `DECISIONES.md`, manda e
 
 - Usa en producción **solo** las acciones de `accionesPanel`; el resto, en modo demostración.
 - Mantén la comprobación de `panel: true` antes de cualquier POST.
-- Hoy la lista es `["panelLogin", "panelConfig"]`.
+- Hoy la lista es `["panelLogin", "panelConfig", "panelCompras", "panelClasificarProveedor", "panelAsignarCombustible", "panelCostes", "panelCostesTecnico"]`.
 
 ## Disponible en producción
 
@@ -18,6 +18,13 @@ Lo mantiene el backend. **Si algo de aquí contradice a `DECISIONES.md`, manda e
 | `ping` | GET y POST | — | `{ ok, version, panel, accionesPanel }` |
 | `panelLogin` | POST | `payload={"accion":"panelLogin","clave":"…"}` | `{ ok, token, caduca }` · `{ ok:false, error }` · `{ ok:false, bloqueado:true }` |
 | `panelConfig` | GET | `?action=panelConfig&token=…` (opcional `&nocache=1`) | ver abajo · sin testigo válido: `{ ok:false, codigo:"sesion" }` |
+| `panelCompras` | GET | `?action=panelCompras&mes=AAAA-MM&token=…` | ver «Compras» |
+| `panelClasificarProveedor` | POST | `{ accion, proveedor, tipo }` | `{ ok, accion, filas, avisos }` |
+| `panelAsignarCombustible` | POST | `{ accion, asignaciones: [{ idFactura, matricula \| null }] }` | `{ ok, accion, actualizadas, avisos }` |
+| `panelCostes` | GET | `?action=panelCostes&desde=AAAA-MM&hasta=AAAA-MM&token=…` | ver «Costes» |
+| `panelCostesTecnico` | POST | `{ accion, mes, costes: [{ idTec, costeEmpresaMes }], origen }` | `{ ok, accion, guardados, avisos }` |
+
+Todas las escrituras van por POST con el testigo en el campo `token` del formulario, como `panelLogin`. Sin testigo válido: `{ ok:false, accion, codigo:"sesion" }` y no se escribe nada.
 
 ## `panelConfig` — formato real
 
@@ -90,6 +97,58 @@ Lo que toca a cada lado:
 - **`tramos` va vacío** hasta que exista el motor de liquidación.
 - **`jornadaAnual: 1770`** (Convenio del Metal de Madrid 2024–2027).
 
+## Compras — `panelCompras`
+
+Sale de `💳 Compras Holded` (sincronizada con Holded cada noche, 180 días de histórico) y `🏷️ Proveedores`.
+
+```json
+{
+  "ok": true, "accion": "panelCompras", "mes": "2026-09",
+  "facturas": [
+    { "id": "6ab3…", "fecha": "2026-09-01", "proveedor": "LEASYS S.P.A SUCURSAL EN ESPAÑA",
+      "tipo": "vehiculo", "importeSinIva": 493.87, "matricula": "4299NGK", "numero": "L-902" },
+    { "id": "6ab4…#0", "fecha": "2026-09-05",
+      "proveedor": "ESPAÑOLA DE MOVILIDAD ELECTRICA SL. (ESMOVE) · Renting Peugeot Partner 7463LVN",
+      "tipo": "vehiculo", "importeSinIva": 391.58, "matricula": "7463LVN", "numero": "E-77" }
+  ],
+  "sinClasificar": [
+    { "id": "6ab5…", "fecha": "2026-09-09", "proveedor": "GASOLINERA NUEVA SL",
+      "importeSinIva": 45.5, "esLinea": false }
+  ],
+  "tiposProveedor": [ { "valor": "combustible", "etiqueta": "Combustible" }, "…" ]
+}
+```
+
+- **`id` es opaco.** Las facturas de proveedores `mixto` (ESMOVE, Amazon…) llegan **una fila por línea**, con `id` terminado en `#n` y `proveedor` = «PROVEEDOR · texto de la línea».
+- **`sinClasificar[].esLinea: true`** → es una línea de un proveedor mixto, no un proveedor. Al clasificarla con `panelClasificarProveedor` el backend no da de alta un proveedor: guarda una **regla de línea** con ese texto. El panel manda lo mismo en los dos casos (`proveedor` tal cual llega); puede, si quiere, rotularlo distinto.
+- **Las facturas de tipo `ignorar` no se envían.**
+- **`importeSinIva`** es la base imponible: la Dirección trabaja sin IVA.
+
+### `panelAsignarCombustible` vale para cualquier gasto de vehículo
+
+No solo combustible: también `vehiculo` (renting y mantenimiento). La matrícula tiene que existir en `vehiculos` de `panelConfig`; si no, se rechaza esa fila con un aviso y el resto se guarda. `matricula: null` quita el vehículo.
+
+Los rentings se rellenan solos en el backend: Leasys (las dos Opel Vivaro) y las líneas de renting de las facturas de ESMOVE (Peugeot Partner y T-Cross) llevan la matrícula en el texto. Una factura con **varias** matrículas no se asigna sola: el backend la deja sin matrícula y avisa. El panel no tiene que hacer nada especial.
+
+## Costes — `panelCostes`
+
+Sale de `💰 Costes mensuales` (coste de empresa real por técnico y mes, de la nómina) y, donde no hay dato, del coste de referencia de `👤 Empleados`.
+
+```json
+{
+  "ok": true, "accion": "panelCostes", "desde": "2026-06", "hasta": "2026-09",
+  "costes": [
+    { "mes": "2026-08", "idTec": "E01", "costeEmpresaMes": 2688.15, "origen": "gestoria" },
+    { "mes": "2026-09", "idTec": "E01", "costeEmpresaMes": 2893.10, "origen": "estimacion" }
+  ]
+}
+```
+
+- **Una fila por técnico vigente en cada mes** (alta y baja inclusive). Un técnico dado de baja no aparece en los meses posteriores.
+- **`origen`**: `"gestoria"` = dato de nómina; `"manual"` = corregido a mano; `"estimacion"` = no hay dato del mes y se usa el coste de referencia. `"estimacion"` nunca se guarda: es solo lectura.
+- **`panelCostesTecnico`** acepta `origen` `"gestoria"` o `"manual"`. Crea o corrige el mes de cada técnico; un `idTec` que no exista se rechaza con aviso y el resto se guarda.
+- Agosto 2026 ya está cargado con la nómina real (total 22.746,19 €).
+
 ## Reglas del backend que el panel debe conocer
 
 - Una acción desconocida por POST se **rechaza**: `{ ok:false, rechazado:true, error }`. No se encola nada.
@@ -125,6 +184,6 @@ Enviar la fila de vehículo cuando no hacía falta no rompe nada: el backend la 
 
 ## Próximas acciones (todavía NO disponibles)
 
-`panelGuardarConfig` (la siguiente) · `panelCompras` · `panelCostes` · `panelLiquidacion` · `panelAsignarCombustible` · `panelClasificarProveedor` · `panelCostesTecnico`.
+`panelGuardarConfig` (la siguiente) · `panelLiquidacion` (pendiente de que la Dirección fije las reglas del variable).
 
 Aviso para `panelGuardarConfig`, que escribirá en la misma tabla que usa el cálculo de costes: si los dos técnicos de una brigada cambian el mismo día, todas las filas abiertas de esa brigada pasarían a tener esa fecha de inicio y el alta efectiva de la brigada saltaría hacia delante, prorrateando su coste de estructura en rentabilidad, dashboard y KPI mensual. Se resuelve en el backend antes de publicar la acción; el panel no tiene que hacer nada.

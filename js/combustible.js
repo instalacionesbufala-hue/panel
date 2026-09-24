@@ -1,6 +1,6 @@
 // Pantalla de combustible: asignar cada gasto de vehículo (combustible, renting, mantenimiento) a su matrícula.
-import * as api from './api.js?v=12';
-import { esc, eur, fecha, mesActual, sumarMeses, nombreMes, vigenteEnMes, avisar, cajaError, selectorMes } from './ui.js?v=12';
+import * as api from './api.js?v=13';
+import { esc, eur, fecha, mesActual, sumarMeses, nombreMes, vigenteEnMes, avisar, cajaError, selectorMes } from './ui.js?v=13';
 
 const SIN = '';
 // Los tipos de proveedor los manda el backend en panelCompras.tiposProveedor (texto u objeto { valor, etiqueta })

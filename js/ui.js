@@ -93,9 +93,9 @@ export function preguntar(titulo, cuerpoHtml, { aceptar = 'Aceptar', cancelar = 
 export const cajaError = (e, titulo = 'No se ha podido completar') =>
   `<div class="caja-error" role="alert"><strong>${esc(e.tipo === 'red' ? 'Sin conexión' : e.tipo === 'solo-lectura' ? 'Aún no se puede guardar' : titulo)}.</strong> ${esc(e.message || e)}</div>`;
 
-export function listaAvisos(avisos) {
+export function listaAvisos(avisos, duracion = 12000) {
   if (!avisos || !avisos.length) return;
-  avisos.forEach(a => avisar(typeof a === 'string' ? a : (a.mensaje || JSON.stringify(a)), 'aviso', 12000));
+  avisos.forEach(a => avisar(typeof a === 'string' ? a : (a.mensaje || JSON.stringify(a)), 'aviso', duracion));
 }
 
 // Selector de mes reutilizable

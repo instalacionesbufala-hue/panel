@@ -1,17 +1,25 @@
 // Maestros: técnicos, vehículos y unidades. Nunca se borra nada: se da de baja con fecha.
-import * as api from './api.js?v=12';
-import { esc, eur, fecha, hoy, vigente, leerImporte, importeEditable, avisar, preguntar, cajaError, listaAvisos } from './ui.js?v=12';
+import * as api from './api.js?v=13';
+import { esc, eur, fecha, hoy, vigente, leerImporte, importeEditable, avisar, preguntar, cajaError, listaAvisos } from './ui.js?v=13';
 
 export function montar(el) {
   let cfg = null;
   let errorCarga = null;
   let verBajas = false;
+  // En producción, panelGuardarConfig solo acepta asignaciones: rechaza altas, bajas y ediciones de
+  // técnicos, vehículos y unidades (BACKEND.md v3.20.22). Mientras tanto esos botones van desactivados.
+  let maestrosProximamente = false;
 
   async function recargar() {
     errorCarga = null;
-    try { cfg = await api.leerConfig(); } catch (e) { errorCarga = e; }
+    try {
+      cfg = await api.leerConfig();
+      maestrosProximamente = (await api.accionesEnProduccion()).has('panelGuardarConfig');
+    } catch (e) { errorCarga = e; }
     pintar();
   }
+  const PROXIMAMENTE = 'Próximamente: el servidor todavía no admite altas, bajas ni cambios en técnicos, vehículos y unidades.';
+  const bloqueo = () => maestrosProximamente ? `disabled title="${PROXIMAMENTE}"` : '';
 
   // Abre un formulario en el diálogo; si el servidor rechaza, se vuelve a abrir con lo escrito.
   async function formulario(titulo, campos, valores, construir, textoAceptar = 'Guardar') {
@@ -143,8 +151,8 @@ export function montar(el) {
       : hasta && hasta < d ? `<span class="insignia">baja ${fecha(hasta)}</span>`
       : hasta ? `<span class="insignia aviso">baja el ${fecha(hasta)}</span>` : '<span class="insignia ok">activo</span>';
     const botones = (tipo, id, deBaja) => `<div class="botones-tipo">
-      <button class="boton secundario mini" data-accion="editar" data-tipo="${tipo}" data-id="${esc(id)}">Editar</button>
-      ${deBaja ? '' : `<button class="boton peligro mini" data-accion="baja" data-tipo="${tipo}" data-id="${esc(id)}">Dar de baja</button>`}</div>`;
+      <button class="boton secundario mini" data-accion="editar" data-tipo="${tipo}" data-id="${esc(id)}" ${bloqueo()}>Editar</button>
+      ${deBaja ? '' : `<button class="boton peligro mini" data-accion="baja" data-tipo="${tipo}" data-id="${esc(id)}" ${bloqueo()}>Dar de baja</button>`}</div>`;
 
     el.innerHTML = `
       <div class="barra">
@@ -152,9 +160,10 @@ export function montar(el) {
         <label class="empuje" style="display:flex;align-items:center;gap:.4rem;min-width:0"><input type="checkbox" id="ver-bajas" ${verBajas ? 'checked' : ''} style="min-height:0"> Mostrar bajas</label>
       </div>
       ${errorCarga ? cajaError(errorCarga, 'No se ha podido actualizar') : ''}
+      ${maestrosProximamente ? `<div class="caja-aviso"><strong>Solo consulta, por ahora.</strong> ${PROXIMAMENTE} Las asignaciones de técnicos y furgonetas a unidades ya se guardan desde «Unidades».</div>` : ''}
 
       <section class="bloque">
-        <div class="barra" style="align-items:center"><h2 style="margin:0">Técnicos</h2><span class="empuje"></span><button class="boton" data-accion="alta" data-tipo="tec">Alta de técnico</button></div>
+        <div class="barra" style="align-items:center"><h2 style="margin:0">Técnicos</h2><span class="empuje"></span><button class="boton" data-accion="alta" data-tipo="tec" ${bloqueo()}>Alta de técnico</button></div>
         <div class="tabla-scroll"><table>
           <thead><tr><th>Id.</th><th>Nombre</th><th>Rol</th><th>Grupo</th><th>Alta</th><th>Estado</th><th></th></tr></thead>
           <tbody>${tecs.map(t => `<tr class="${t.baja && t.baja < d ? 'baja' : ''}">
@@ -164,7 +173,7 @@ export function montar(el) {
       </section>
 
       <section class="bloque">
-        <div class="barra" style="align-items:center"><h2 style="margin:0">Vehículos</h2><span class="empuje"></span><button class="boton" data-accion="alta" data-tipo="veh">Alta de vehículo</button></div>
+        <div class="barra" style="align-items:center"><h2 style="margin:0">Vehículos</h2><span class="empuje"></span><button class="boton" data-accion="alta" data-tipo="veh" ${bloqueo()}>Alta de vehículo</button></div>
         <div class="tabla-scroll"><table>
           <thead><tr><th>Matrícula</th><th>Modelo</th><th>Brigada hoy</th><th class="num">Renting/mes</th><th>Desde</th><th>Estado</th><th></th></tr></thead>
           <tbody>${vehs.map(v => `<tr class="${v.hasta && v.hasta < d ? 'baja' : ''}">
@@ -174,7 +183,7 @@ export function montar(el) {
       </section>
 
       <section class="bloque">
-        <div class="barra" style="align-items:center"><h2 style="margin:0">Unidades</h2><span class="empuje"></span><button class="boton" data-accion="alta" data-tipo="uni">Nueva unidad</button></div>
+        <div class="barra" style="align-items:center"><h2 style="margin:0">Unidades</h2><span class="empuje"></span><button class="boton" data-accion="alta" data-tipo="uni" ${bloqueo()}>Nueva unidad</button></div>
         <div class="tabla-scroll"><table>
           <thead><tr><th>Id.</th><th>Nombre</th><th>Tipo</th><th>Estado</th><th></th></tr></thead>
           <tbody>${unis.map(u => `<tr class="${u.activa === false ? 'baja' : ''}">
@@ -191,6 +200,7 @@ export function montar(el) {
     if (!b) return;
     const { accion, tipo, id } = b.dataset;
     if (accion === 'recargar') return recargar();
+    if (maestrosProximamente) return avisar(PROXIMAMENTE, 'aviso');
     const buscar = { tec: () => cfg.tecnicos.find(t => t.id === id), veh: () => cfg.vehiculos.find(v => v.matricula === id), uni: () => cfg.unidades.find(u => u.id === id) }[tipo];
     const acciones = {
       alta: { tec: altaTecnico, veh: altaVehiculo, uni: altaUnidad },

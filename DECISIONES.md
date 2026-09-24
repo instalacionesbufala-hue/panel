@@ -1,6 +1,15 @@
 # Decisiones del panel y dudas para el backend
 
-**El contrato vive en [`BACKEND.md`](BACKEND.md)**, lo mantiene el backend y manda sobre este fichero. Aquí queda lo que decide el panel por su cuenta y lo que el panel pregunta. Revisado contra BACKEND.md **v3.20.21** el 23/09/2026.
+**El contrato vive en [`BACKEND.md`](BACKEND.md)**, lo mantiene el backend y manda sobre este fichero. Aquí queda lo que decide el panel por su cuenta y lo que el panel pregunta. Revisado contra BACKEND.md **v3.20.22** el 24/09/2026.
+
+## Guardar asignaciones en producción — hecho (v3.20.22)
+
+- **Unidades ya guarda en el sistema real.** El panel envía solo `{ asignaciones }`, con el formato exacto de BACKEND.md:
+  - una fila por técnico que cambia de unidad: `{ idTec, idUnidad | null, desde }`, sin matrícula;
+  - una fila por unidad cuya furgoneta cambia: `{ idTec: null, idUnidad, matricula | null, desde }`. Si una furgoneta pasa de una unidad a otra, salen las dos filas (la de origen con `null`).
+- **Avisos.** Los `avisos` de la respuesta se muestran siempre, 20 segundos cada uno. Tras guardar se vuelve a leer `panelConfig`.
+- **Técnicos y vehículos: solo consulta.** Mientras `panelGuardarConfig` vaya a producción, altas, bajas, ediciones y «Nueva unidad» van desactivados con el aviso «Próximamente». En la demostración siguen funcionando.
+- Comprobado con el simulador local: mover una furgoneta de Búfala 1 a Búfala 2 y un técnico a Búfala 2 envía exactamente tres filas (técnico, Búfala 1 sin furgoneta, Búfala 2 con la furgoneta) y enseña el aviso del backend.
 
 ## Compras y costes en producción — hecho (v3.20.21)
 
@@ -22,7 +31,7 @@ Además, el panel guarda en memoria una copia de `panelConfig` durante 10 minuto
 
 ## Dudas abiertas para el backend
 
-1. **`panelConfig` está en producción, pero `panelGuardarConfig` no.** Como estaba previsto, el panel bloquea esa escritura: Unidades y Técnicos y vehículos son de solo consulta hasta que llegue `panelGuardarConfig`.
+Ninguna por ahora. Pendiente del backend: altas y bajas de técnicos, vehículos y unidades dentro de `panelGuardarConfig`, y `panelLiquidacion`.
 
 ## Resueltas por BACKEND.md (23/09/2026, tarde) — hecho
 

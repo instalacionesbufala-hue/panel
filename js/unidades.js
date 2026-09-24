@@ -1,6 +1,6 @@
 // Pantalla de unidades: formar unidades arrastrando técnicos y vehículos.
-import * as api from './api.js?v=12';
-import { esc, fecha, hoy, vigente, avisar, preguntar, cajaError, listaAvisos } from './ui.js?v=12';
+import * as api from './api.js?v=13';
+import { esc, fecha, hoy, vigente, avisar, preguntar, cajaError, listaAvisos } from './ui.js?v=13';
 
 const LIBRE = '__libre__';
 // El rol no restringe nada (BACKEND.md): cualquier técnico va a cualquier unidad. Solo se avisa
@@ -77,21 +77,17 @@ export function montar(el) {
   function cambios() {
     const filas = [];
     const ids = new Set([...[...base.values()].flatMap(c => c.tecs), ...[...borrador.values()].flatMap(c => c.tecs)]);
+    // Formato de panelGuardarConfig (BACKEND.md v3.20.22). Técnico: { idTec, idUnidad | null, desde };
+    // idUnidad null = sale de todas. La furgoneta va en su propia fila de unidad, no en la del técnico.
     for (const id of ids) {
       const antes = unidadDeTec(base, id), despues = unidadDeTec(borrador, id);
-      const matAntes = antes ? base.get(antes).mat : null;
-      const matDespues = despues ? borrador.get(despues).mat : null;
-      if (antes !== despues || matAntes !== matDespues) {
-        filas.push({ idTec: id, idUnidad: despues, matricula: despues ? matDespues : null, desde: dia, hasta: null });
-      }
+      if (antes !== despues) filas.push({ idTec: id, idUnidad: despues, desde: dia });
     }
-    // Fila de la unidad siempre que cambie su vehículo, tenga técnicos o no (BACKEND.md). También cuando
-    // se queda sin técnicos y conserva el vehículo. El backend la trata como idempotente.
+    // Furgoneta: { idTec: null, idUnidad, matricula | null, desde }, siempre que cambie la de la unidad.
+    // Si se mueve de una unidad a otra salen las dos filas, así ninguna queda contando en dos sitios.
     for (const [u, c] of borrador) {
       const b = base.get(u) || { tecs: [], mat: null };
-      if (b.mat !== c.mat || (c.mat && !c.tecs.length && b.tecs.length)) {
-        filas.push({ idTec: null, idUnidad: u, matricula: c.mat, desde: dia, hasta: null });
-      }
+      if (b.mat !== c.mat) filas.push({ idTec: null, idUnidad: u, matricula: c.mat, desde: dia });
     }
     return filas;
   }
@@ -178,7 +174,7 @@ export function montar(el) {
     pintar();
     try {
       const r = await api.guardarConfig({ asignaciones: filas });
-      listaAvisos(r.avisos);
+      listaAvisos(r.avisos, 20000);   // BACKEND.md: los avisos se enseñan siempre
       avisar(`Composición guardada con efecto desde el ${fecha(dia)}.`, 'info');
       guardando = false;
       await recargar(false);

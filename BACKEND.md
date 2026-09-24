@@ -1,7 +1,7 @@
 # Contrato del backend — fuente de verdad
 
 Lo mantiene el backend. **Si algo de aquí contradice a `DECISIONES.md`, manda este fichero.**
-Última actualización: 25/09/2026 · backend **v3.20.24** (`Panel_Config.gs` v1.4, `Panel_Compras.gs` v1.13, `Panel_Costes.gs` v1.2).
+Última actualización: 25/09/2026 · backend **v3.20.27** (`Panel_Config.gs` v1.4, `Panel_Compras.gs` v1.14, `Panel_Costes.gs` v1.2).
 
 ## Cómo saber qué está disponible
 
@@ -153,6 +153,30 @@ Hoy el desplegable solo ofrece los vehículos **vigentes en el mes de la factura
 
 - **Enseñar siempre las cuatro matrículas actuales** (`vehiculos` con `activo: true`), en cualquier mes, más las que ya tenga asignadas la factura.
 - **Añadir la opción «Estructura (sin vehículo)»**, que se envía como `matricula: "ESTRUCTURA"`. El backend (v3.20.24) la acepta y la imputa a Estructura sin aviso de «sin matrícula». En `panelCompras` vuelve como `matricula: "ESTRUCTURA"`: el panel debe contarla como asignada y rotularla «Estructura».
+
+### Clasificar factura a factura, con vista previa (25/09/2026, backend v3.20.27 · Panel_Compras v1.14)
+
+Encargo de César: **para clasificar hay que ver la factura**, y **un mismo proveedor puede tener facturas de tipos distintos** (unas herramienta, otras material…). Además, hay facturas de **material de uso** que se reparten entre varios equipos.
+
+**Acciones nuevas en producción:**
+
+| Acción | Método | Petición | Respuesta |
+|---|---|---|---|
+| `panelFacturaDetalle` | GET | `id` (el `id` de la factura o línea; si lleva `#…` se usa el documento) | `{ ok, factura: { id, numero, proveedor, fecha, subtotal, total, notas }, lineas: [{ concepto, descripcion, unidades, precio, importe }], pdf: { base64, bytes, tipo } }` o `pdfError` si no hay PDF |
+| `panelClasificarFactura` | POST | `{ id, tipo, equipos? }` | `{ ok, id, tipo, equipos, avisos }` · errores claros en `error` |
+
+- `tipo` admite los de `tiposFactura` (en `panelCompras`): los de proveedor **sin `mixto`**, más **`materialUso`** («Material de uso (se reparte entre equipos)»).
+- Con `tipo: "materialUso"` es obligatorio `equipos` (lista no vacía), con valores de **`equiposDisponibles`** (en `panelCompras`, hoy `["Búfala 1","Búfala 2","Búfala 3"]`). El importe se reparte **a partes iguales** entre los elegidos. César elige en cada factura.
+- La clasificación queda marcada como **manual**: la sincronización nocturna ya no la pisa.
+- Tras guardar, el backend recalcula los costes solo (como en las demás escrituras).
+
+**Cambios en `panelCompras`:** cada factura trae `equipos` (lista) y `manual` (true si se clasificó a mano); cada sin clasificar trae `numero`; la respuesta trae `tiposFactura` y `equiposDisponibles`.
+
+**Qué pide César en el panel:**
+1. **Vista previa.** Cada factura sin clasificar (y cualquier factura, al pulsarla) abre un panel con el **PDF** (`data:application/pdf;base64,…` en un `<iframe>`/`<embed>`) y, si no hay PDF, la **tabla de líneas**. Al lado, los botones de clasificación, para decidir de un vistazo.
+2. **Desagrupar por proveedor.** Hoy se clasifica el proveedor entero. Debe poderse clasificar **cada factura por separado** con `panelClasificarFactura`. Mantener la opción «aplicar a todo el proveedor» (`panelClasificarProveedor`) para cuando todas son iguales.
+3. **Material de uso.** Al elegir «Material de uso» aparecen casillas con los `equiposDisponibles` (todas marcadas por defecto) y el reparto resultante («30,00 € a cada uno»). Sin ninguna marcada no se deja guardar.
+4. **El contador de pendientes en azul**, no en rosa: el azul del panel (`--acento`, #3B5BF0).
 
 ### Aviso de facturas pendientes (25/09/2026, backend Panel_Compras v1.13)
 

@@ -1,7 +1,7 @@
 # Contrato del backend — fuente de verdad
 
 Lo mantiene el backend. **Si algo de aquí contradice a `DECISIONES.md`, manda este fichero.**
-Última actualización: 24/09/2026 · backend **v3.20.22** (`Panel_Config.gs` v1.4, `Panel_Compras.gs` v1.10, `Panel_Costes.gs` v1.1).
+Última actualización: 25/09/2026 · backend **v3.20.24** (`Panel_Config.gs` v1.4, `Panel_Compras.gs` v1.11, `Panel_Costes.gs` v1.2).
 
 ## Cómo saber qué está disponible
 
@@ -146,6 +146,13 @@ Sale de `💳 Compras Holded` (sincronizada con Holded cada noche, 180 días de 
 - **`sinClasificar[].esLinea: true`** → es una línea de un proveedor mixto, no un proveedor. Al clasificarla con `panelClasificarProveedor` el backend no da de alta un proveedor: guarda una **regla de línea** con ese texto. El panel manda lo mismo en los dos casos (`proveedor` tal cual llega); puede, si quiere, rotularlo distinto.
 - **Las facturas de tipo `ignorar` no se envían.**
 - **`importeSinIva`** es la base imponible: la Dirección trabaja sin IVA.
+
+### Encargo para el panel (25/09/2026) — desplegable de vehículo en Combustible
+
+Hoy el desplegable solo ofrece los vehículos **vigentes en el mes de la factura** (`vigenteEnMes(v.desde, v.hasta, mes)`), y en abril solo salen las dos Vivaro. Decisión de César:
+
+- **Enseñar siempre las cuatro matrículas actuales** (`vehiculos` con `activo: true`), en cualquier mes, más las que ya tenga asignadas la factura.
+- **Añadir la opción «Estructura (sin vehículo)»**, que se envía como `matricula: "ESTRUCTURA"`. El backend (v3.20.24) la acepta y la imputa a Estructura sin aviso de «sin matrícula». En `panelCompras` vuelve como `matricula: "ESTRUCTURA"`: el panel debe contarla como asignada y rotularla «Estructura».
 
 ### `panelAsignarCombustible` vale para cualquier gasto de vehículo
 

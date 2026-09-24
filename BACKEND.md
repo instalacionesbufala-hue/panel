@@ -1,7 +1,7 @@
 # Contrato del backend — fuente de verdad
 
 Lo mantiene el backend. **Si algo de aquí contradice a `DECISIONES.md`, manda este fichero.**
-Última actualización: 25/09/2026 · backend **v3.20.24** (`Panel_Config.gs` v1.4, `Panel_Compras.gs` v1.11, `Panel_Costes.gs` v1.2).
+Última actualización: 25/09/2026 · backend **v3.20.24** (`Panel_Config.gs` v1.4, `Panel_Compras.gs` v1.13, `Panel_Costes.gs` v1.2).
 
 ## Cómo saber qué está disponible
 
@@ -153,6 +153,24 @@ Hoy el desplegable solo ofrece los vehículos **vigentes en el mes de la factura
 
 - **Enseñar siempre las cuatro matrículas actuales** (`vehiculos` con `activo: true`), en cualquier mes, más las que ya tenga asignadas la factura.
 - **Añadir la opción «Estructura (sin vehículo)»**, que se envía como `matricula: "ESTRUCTURA"`. El backend (v3.20.24) la acepta y la imputa a Estructura sin aviso de «sin matrícula». En `panelCompras` vuelve como `matricula: "ESTRUCTURA"`: el panel debe contarla como asignada y rotularla «Estructura».
+
+### Aviso de facturas pendientes (25/09/2026, backend Panel_Compras v1.13)
+
+`panelCompras` devuelve, además de lo del mes, un bloque **`pendientes`** con lo que falta por asignar **en todos los meses desde mayo de 2026** (inicio de la medición por equipo):
+
+```json
+"pendientes": {
+  "desde": "2026-05",
+  "sinAsignar": 14, "importeSinAsignar": 1135.40,
+  "porMes": [ { "mes": "2026-05", "n": 6, "importeSinIva": 512.30 }, { "mes": "2026-07", "n": 8, "importeSinIva": 623.10 } ],
+  "sinClasificar": 3,
+  "sinClasificarPorMes": [ { "mes": "2026-08", "n": 3 } ]
+}
+```
+
+- **`sinAsignar`** = facturas o líneas de tipo `combustible` o `vehiculo` **sin matrícula y sin «ESTRUCTURA»**. Una factura asignada a «Estructura (sin vehículo)» ya no cuenta.
+- **`sinClasificar`** = facturas de proveedores aún sin clasificar.
+- **Encargo de César:** que se vea **de un vistazo, en todo momento**, cuántas faltan. Por ejemplo, un contador en la pestaña «Combustible» del menú y un aviso arriba («Faltan 14 facturas por asignar matrícula o Estructura (1.135 €) · 3 sin clasificar»), con el desglose por mes para saltar a cada mes. Tras cada asignación, volver a pedir `panelCompras` para refrescarlo. Si `pendientes` llega `null`, no pintar nada.
 
 ### `panelAsignarCombustible` vale para cualquier gasto de vehículo
 

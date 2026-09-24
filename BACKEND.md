@@ -1,7 +1,7 @@
 # Contrato del backend — fuente de verdad
 
 Lo mantiene el backend. **Si algo de aquí contradice a `DECISIONES.md`, manda este fichero.**
-Última actualización: 23/09/2026 · backend **v3.20.21** (`Panel_Config.gs` v1.3, `Panel_Compras.gs` v1.0, `Panel_Costes.gs` v1.0).
+Última actualización: 24/09/2026 · backend **v3.20.22** (`Panel_Config.gs` v1.4, `Panel_Compras.gs` v1.10, `Panel_Costes.gs` v1.1).
 
 ## Cómo saber qué está disponible
 
@@ -9,7 +9,7 @@ Lo mantiene el backend. **Si algo de aquí contradice a `DECISIONES.md`, manda e
 
 - Usa en producción **solo** las acciones de `accionesPanel`; el resto, en modo demostración.
 - Mantén la comprobación de `panel: true` antes de cualquier POST.
-- Hoy la lista es `["panelLogin", "panelConfig", "panelCompras", "panelClasificarProveedor", "panelAsignarCombustible", "panelCostes", "panelCostesTecnico"]`.
+- Hoy la lista es `["panelLogin", "panelConfig", "panelCompras", "panelClasificarProveedor", "panelAsignarCombustible", "panelCostes", "panelCostesTecnico", "panelGuardarConfig"]`.
 
 ## Disponible en producción
 
@@ -23,6 +23,7 @@ Lo mantiene el backend. **Si algo de aquí contradice a `DECISIONES.md`, manda e
 | `panelAsignarCombustible` | POST | `{ accion, asignaciones: [{ idFactura, matricula \| null }] }` | `{ ok, accion, actualizadas, avisos }` |
 | `panelCostes` | GET | `?action=panelCostes&desde=AAAA-MM&hasta=AAAA-MM&token=…` | ver «Costes» |
 | `panelCostesTecnico` | POST | `{ accion, mes, costes: [{ idTec, costeEmpresaMes }], origen }` | `{ ok, accion, guardados, avisos }` |
+| `panelGuardarConfig` | POST | `{ accion, asignaciones: [...] }` (solo asignaciones, ver abajo) | `{ ok, accion, filas, avisos, ids }` |
 
 Todas las escrituras van por POST con el testigo en el campo `token` del formulario, como `panelLogin`. Sin testigo válido: `{ ok:false, accion, codigo:"sesion" }` y no se escribe nada.
 
@@ -96,6 +97,28 @@ Lo que toca a cada lado:
 - **`vehiculos[].origen`** dice de qué pestaña sale cada vehículo. Las matrículas no se repiten: un vehículo que esté en las dos fuentes se publica una sola vez, con los datos de `🚚 Recursos`.
 - **`tramos` va vacío** hasta que exista el motor de liquidación.
 - **`jornadaAnual: 1770`** (Convenio del Metal de Madrid 2024–2027).
+
+## Guardar asignaciones — `panelGuardarConfig`
+
+**Solo asignaciones.** Mueve técnicos y furgonetas entre unidades con fecha. Lo que se guarda aquí es lo que usa el cálculo de costes reales por brigada, así que un cambio con fecha recalcula ese mes y los siguientes.
+
+```json
+{ "accion": "panelGuardarConfig",
+  "asignaciones": [
+    { "idTec": "E09", "idUnidad": "Búfala 1", "desde": "2026-10-01" },
+    { "idTec": null, "idUnidad": "Búfala 3", "matricula": null,      "desde": "2026-10-01" },
+    { "idTec": null, "idUnidad": "Búfala 2", "matricula": "7463LVN", "desde": "2026-10-01" }
+  ] }
+```
+
+- **Técnico** `{ idTec, idUnidad | null, desde }`: se cierra su asignación abierta el día anterior a `desde` y se abre la nueva. `idUnidad: null` = sale de todas. Si la asignación abierta empieza el mismo día, se corrige en su sitio (sin duplicar).
+- **Furgoneta** `{ idTec: null, idUnidad, matricula | null, desde }`: la unidad tiene esa furgoneta desde ese día (`null` = se queda sin furgoneta).
+- **Si una unidad recibe una furgoneta y tenía otra que no se mueve en la misma petición, la anterior queda sin unidad** desde esa fecha, y la respuesta trae el aviso. Así nunca cuenta en dos sitios. Si el panel quiere llevarla a otra unidad, que mande también esa fila.
+- **Todo se valida antes de escribir**: fecha, técnico, unidad y matrícula existentes, y un técnico solo una vez por petición. Si algo falla: `{ ok:false, error }` y **no se escribe nada**.
+- **`tecnicos`, `vehiculos` o `unidades` no vacíos → `{ ok:false, rechazado:true, error }` y no se guarda nada**, tampoco las asignaciones que vinieran con ellos. Las altas y bajas todavía no están: el panel debe dejar esos botones desactivados o con «próximamente».
+- **`avisos`** hay que enseñarlos siempre. Además del de la furgoneta sin unidad, puede venir uno sobre la Rentabilidad actual: si un cambio deja una brigada con todas sus asignaciones nuevas, el cálculo antiguo adelanta su alta y prorratea ese mes. Es informativo; la escritura se hace igual.
+- Tras guardar, la caché de `panelConfig` se invalida sola.
+- En `panelConfig`, la asignación `derivada` de una furgoneta (la que sale de `🚚 Recursos`) termina el día antes de su primer movimiento desde el panel. Las filas internas de «furgoneta sin unidad» no se publican.
 
 ## Compras — `panelCompras`
 
@@ -184,6 +207,6 @@ Enviar la fila de vehículo cuando no hacía falta no rompe nada: el backend la 
 
 ## Próximas acciones (todavía NO disponibles)
 
-`panelGuardarConfig` (la siguiente) · `panelLiquidacion` (pendiente de que la Dirección fije las reglas del variable).
+`panelLiquidacion` (pendiente de que la Dirección fije las reglas del variable) · altas y bajas de técnicos, vehículos y unidades dentro de `panelGuardarConfig`.
 
-Aviso para `panelGuardarConfig`, que escribirá en la misma tabla que usa el cálculo de costes: si los dos técnicos de una brigada cambian el mismo día, todas las filas abiertas de esa brigada pasarían a tener esa fecha de inicio y el alta efectiva de la brigada saltaría hacia delante, prorrateando su coste de estructura en rentabilidad, dashboard y KPI mensual. Se resuelve en el backend antes de publicar la acción; el panel no tiene que hacer nada.
+Sobre el alta de brigada en la Rentabilidad actual: el riesgo sigue existiendo en el cálculo antiguo y ahora se avisa en la respuesta (ver `avisos`). Desaparece cuando Rentabilidad pase a leer los costes reales por brigada, que se reparten por días y no usan la fecha de alta.

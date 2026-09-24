@@ -1,6 +1,6 @@
 // Pantalla de combustible: asignar cada gasto de vehículo (combustible, renting, mantenimiento) a su matrícula.
-import * as api from './api.js?v=14';
-import { esc, eur, fecha, mesActual, sumarMeses, nombreMes, avisar, cajaError, selectorMes } from './ui.js?v=14';
+import * as api from './api.js?v=15';
+import { esc, eur, fecha, mesActual, sumarMeses, nombreMes, avisar, cajaError, selectorMes } from './ui.js?v=15';
 
 const SIN = '';
 // Gasto imputado a Estructura sin vehículo concreto (BACKEND.md v3.20.24): cuenta como asignado
@@ -145,6 +145,7 @@ export function montar(el) {
     }
 
     el.innerHTML = cabecera + `
+      ${avisoPendientes(compras.pendientes)}
       ${errorCarga ? cajaError(errorCarga, 'No se ha podido actualizar') : ''}
       ${errorGuardado ? cajaError(errorGuardado, 'El servidor no ha aceptado las asignaciones') : ''}
 
@@ -196,14 +197,33 @@ export function montar(el) {
       </section>` : ''}`;
   }
 
+  // Lo que falta en todos los meses desde mayo de 2026 (panelCompras.pendientes). null: no se pinta nada.
+  function avisoPendientes(p) {
+    if (!p || (!p.sinAsignar && !p.sinClasificar)) return '';
+    const partes = [];
+    if (p.sinAsignar) partes.push(`Faltan <strong>${p.sinAsignar} factura${p.sinAsignar === 1 ? '' : 's'}</strong> por asignar matrícula o Estructura (${eur(p.importeSinAsignar)})`);
+    if (p.sinClasificar) partes.push(`<strong>${p.sinClasificar}</strong> sin clasificar`);
+    const chip = (m, texto) => `<button class="boton secundario mini${m === mes ? ' actual' : ''}" data-accion="ir-mes" data-mes="${esc(m)}" ${m === mes ? 'aria-current="true"' : ''}>${esc(nombreMes(m))} · ${texto}</button>`;
+    return `<div class="caja-aviso pendientes">
+      <p style="margin:0 0 .5rem">${partes.join(' · ')}${p.desde ? ` <span class="tenue">desde ${esc(nombreMes(p.desde))}</span>` : ''}.</p>
+      <div class="botones-tipo">
+        ${(p.porMes || []).map(x => chip(x.mes, `${x.n} sin asignar (${eur(x.importeSinIva)})`)).join('')}
+        ${(p.sinClasificarPorMes || []).map(x => chip(x.mes, `${x.n} sin clasificar`)).join('')}
+      </div></div>`;
+  }
+
+  function irAMes(nuevo, selector) {
+    if (!nuevo || nuevo === mes) return;
+    if (pendientes.size && !confirm('Hay asignaciones sin guardar. ¿Cambiar de mes y descartarlas?')) { if (selector) selector.value = mes; return; }
+    pendientes.clear(); errorGuardado = null;
+    mes = nuevo; compras = null;
+    recargar();
+  }
+
   function alCambiar(ev) {
     const t = ev.target;
     if (t.id === 'mes') {
-      if (!t.value) return;
-      if (pendientes.size && !confirm('Hay asignaciones sin guardar. ¿Cambiar de mes y descartarlas?')) { t.value = mes; return; }
-      pendientes.clear(); errorGuardado = null;
-      mes = t.value; compras = null;
-      recargar();
+      irAMes(t.value, t);
     } else if (t.dataset.factura) {
       marcar(t.dataset.factura, t.value);
     }
@@ -221,6 +241,7 @@ export function montar(el) {
     if (!b) return;
     const a = b.dataset.accion;
     if (a === 'recargar') recargar();
+    if (a === 'ir-mes') irAMes(b.dataset.mes);
     if (a === 'guardar') guardar();
     if (a === 'descartar') { pendientes.clear(); errorGuardado = null; pintar(); }
     if (a === 'clasificar') clasificar(b.dataset.proveedor, b.dataset.tipo);

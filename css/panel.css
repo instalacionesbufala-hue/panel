@@ -317,3 +317,11 @@ td input.importe { width: 9rem; text-align: right; font-variant-numeric: tabular
   .marca span { display: none; }
   h1 { font-size: 1.5rem; }
 }
+
+/* Contador de pendientes en el menú */
+.menu a .contador {
+  display: inline-grid; place-items: center; min-width: 20px; height: 20px; padding: 0 6px; margin-left: 7px;
+  border-radius: 999px; background: var(--rosa); color: #fff; font-size: .72rem; font-weight: 800; line-height: 1;
+  vertical-align: 1px; box-shadow: 0 0 0 2px var(--superficie-solida);
+}
+.caja-aviso.pendientes .boton.actual { border-color: var(--aviso); background: var(--aviso-fondo); }

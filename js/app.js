@@ -1,10 +1,11 @@
 // Entrada del panel: navegación, pantalla de acceso y aviso de conexión.
-import * as api from './api.js?v=14';
-import * as unidades from './unidades.js?v=14';
-import * as combustible from './combustible.js?v=14';
-import * as costes from './costes.js?v=14';
-import * as maestros from './tecnicos.js?v=14';
-import * as liquidacion from './liquidacion.js?v=14';
+import * as api from './api.js?v=15';
+import { mesActual } from './ui.js?v=15';
+import * as unidades from './unidades.js?v=15';
+import * as combustible from './combustible.js?v=15';
+import * as costes from './costes.js?v=15';
+import * as maestros from './tecnicos.js?v=15';
+import * as liquidacion from './liquidacion.js?v=15';
 
 const VISTAS = { unidades, combustible, costes, maestros, liquidacion };
 const VISTA_INICIAL = 'unidades';
@@ -56,6 +57,25 @@ $('#form-acceso').addEventListener('submit', async ev => {
 });
 
 api.alPedirAcceso(pedirAcceso);
+
+// ── Contador de facturas pendientes en la pestaña «Combustible» ──
+// Se actualiza con cada lectura de panelCompras (al entrar y tras cada asignación o clasificación).
+function pintarContador(p) {
+  const a = $('#menu a[data-vista="combustible"]');
+  let c = a.querySelector('.contador');
+  const total = p ? (p.sinAsignar || 0) + (p.sinClasificar || 0) : 0;
+  if (!total) { c?.remove(); a.removeAttribute('title'); return; }
+  if (!c) { c = document.createElement('span'); c.className = 'contador'; a.append(c); }
+  c.textContent = total > 99 ? '99+' : total;
+  const partes = [];
+  if (p.sinAsignar) partes.push(`${p.sinAsignar} factura${p.sinAsignar === 1 ? '' : 's'} sin matrícula ni Estructura`);
+  if (p.sinClasificar) partes.push(`${p.sinClasificar} sin clasificar`);
+  a.title = 'Pendiente: ' + partes.join(' · ');
+  c.setAttribute('aria-label', a.title);
+}
+api.alCambiarPendientes(pintarContador);
+// Primera lectura al arrancar, detrás de la de la pantalla (las peticiones salen de una en una)
+const leerPendientes = () => api.leerCompras(mesActual()).catch(() => { /* ya lo avisa la franja de conexión */ });
 
 // Aviso permanente mientras alguna acción se sirva con datos de ejemplo (la lista la da el ping del backend)
 function pintarFranjaDemo() {
@@ -128,4 +148,5 @@ window.addEventListener('beforeunload', ev => {
   if (!api.haySesion()) await pedirAcceso();
   else $('#salir').hidden = false;
   mostrar(nombreDesdeHash());
+  if (nombreActual !== 'combustible') leerPendientes();   // Combustible ya lo lee por su cuenta
 })();

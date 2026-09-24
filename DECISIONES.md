@@ -2,6 +2,13 @@
 
 **El contrato vive en [`BACKEND.md`](BACKEND.md)**, lo mantiene el backend y manda sobre este fichero. Aquí queda lo que decide el panel por su cuenta y lo que el panel pregunta. Revisado contra BACKEND.md **v3.20.24** el 25/09/2026.
 
+## Aviso de facturas pendientes — hecho (Panel_Compras v1.13)
+
+- **Contador en la pestaña «Combustible»**, visible desde cualquier pantalla: suma `pendientes.sinAsignar + pendientes.sinClasificar`, con el desglose al pasar el ratón. Se pide `panelCompras` del mes actual al entrar al panel (en la cola, detrás de la pantalla abierta) y se refresca con cada lectura de `panelCompras`, es decir, tras cada asignación o clasificación.
+- **Aviso arriba en Combustible**: «Faltan N facturas por asignar matrícula o Estructura (importe) · M sin clasificar», con un botón por mes de `porMes` y `sinClasificarPorMes` que lleva a ese mes (pide confirmación si hay asignaciones sin guardar).
+- Si `pendientes` llega `null` o todo a cero, no se pinta nada.
+- Comprobado con el simulador local: el contador aparece al entrar en Unidades y baja al asignar una factura a Estructura.
+
 ## Desplegable de vehículo en Combustible — hecho (v3.20.24)
 
 - El desplegable ofrece siempre los vehículos con `activo: true`, en cualquier mes, más la matrícula que ya tenga la factura aunque no esté activa.

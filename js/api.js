@@ -225,7 +225,15 @@ export function leerConfig() {
   promesa.catch(() => { if (copiaConfig === esta) copiaConfig = null; });
   return promesa.then(copia);
 }
-export const leerCompras = mes => llamar('panelCompras', { params: { mes } });
+// panelCompras trae además `pendientes` (lo que falta por asignar en todos los meses desde mayo de 2026).
+// Cada lectura lo reparte a quien escuche, para el contador del menú.
+const oyentesPendientes = new Set();
+export function alCambiarPendientes(fn) { oyentesPendientes.add(fn); }
+export const leerCompras = async mes => {
+  const r = await llamar('panelCompras', { params: { mes } });
+  if ('pendientes' in r) oyentesPendientes.forEach(fn => fn(r.pendientes));
+  return r;
+};
 export const leerLiquidacion = mes => llamar('panelLiquidacion', { params: { mes } });
 export const leerCostes = (desde, hasta) => llamar('panelCostes', { params: { desde, hasta } });
 
@@ -330,6 +338,26 @@ function crearDemo() {
 }
 let demo = null;
 
+// Como el backend: facturas de combustible o vehículo sin matrícula ni ESTRUCTURA, desde mayo de 2026
+function demoPendientes() {
+  const DESDE = '2026-05';
+  const porMes = [], sinClasificarPorMes = [];
+  for (const [mes, lista] of Object.entries(demo.facturas).sort()) {
+    if (mes < DESDE) continue;
+    const sin = lista.filter(f => ['combustible', 'vehiculo'].includes(f.tipo) && !f.matricula);
+    if (sin.length) porMes.push({ mes, n: sin.length, importeSinIva: Math.round(sin.reduce((t, f) => t + f.importeSinIva, 0) * 100) / 100 });
+  }
+  for (const [mes, lista] of Object.entries(demo.sinClasificar).sort()) if (mes >= DESDE && lista.length) sinClasificarPorMes.push({ mes, n: lista.length });
+  return {
+    desde: DESDE,
+    sinAsignar: porMes.reduce((t, m) => t + m.n, 0),
+    importeSinAsignar: Math.round(porMes.reduce((t, m) => t + m.importeSinIva, 0) * 100) / 100,
+    porMes,
+    sinClasificar: sinClasificarPorMes.reduce((t, m) => t + m.n, 0),
+    sinClasificarPorMes,
+  };
+}
+
 function demoUnidadDe(idTec, dia) {
   const a = demo.asignaciones.find(x => x.idTec === idTec && vig(x.desde, x.hasta, dia));
   return a ? demo.unidades.find(u => u.id === a.idUnidad)?.nombre || a.idUnidad : '';
@@ -362,7 +390,7 @@ function demoResponder(accion, params, p) {
       return { ok: true, tecnicos: conActivo(demo.tecnicos, 'alta', 'baja'), vehiculos: conActivo(demo.vehiculos, 'desde', 'hasta'),
         unidades: demo.unidades, asignaciones: demo.asignaciones, tramos: demo.tramos, ejercicio: demo.ejercicio, limites: demo.limites };
     case 'panelCompras':
-      return { ok: true, mes: params.mes, facturas: demo.facturas[params.mes] || [], sinClasificar: demo.sinClasificar[params.mes] || [], tiposProveedor: demo.tiposProveedor };
+      return { ok: true, mes: params.mes, facturas: demo.facturas[params.mes] || [], sinClasificar: demo.sinClasificar[params.mes] || [], tiposProveedor: demo.tiposProveedor, pendientes: demoPendientes() };
     case 'panelCostes':
       return { ok: true, desde: params.desde, hasta: params.hasta, costes: Object.entries(demo.costes)
         .filter(([m]) => m >= params.desde && m <= params.hasta)

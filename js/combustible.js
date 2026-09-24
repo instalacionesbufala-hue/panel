@@ -1,8 +1,11 @@
 // Pantalla de combustible: asignar cada gasto de vehículo (combustible, renting, mantenimiento) a su matrícula.
-import * as api from './api.js?v=13';
-import { esc, eur, fecha, mesActual, sumarMeses, nombreMes, vigenteEnMes, avisar, cajaError, selectorMes } from './ui.js?v=13';
+import * as api from './api.js?v=14';
+import { esc, eur, fecha, mesActual, sumarMeses, nombreMes, avisar, cajaError, selectorMes } from './ui.js?v=14';
 
 const SIN = '';
+// Gasto imputado a Estructura sin vehículo concreto (BACKEND.md v3.20.24): cuenta como asignado
+const ESTRUCTURA = 'ESTRUCTURA';
+const rotulo = m => m === ESTRUCTURA ? 'Estructura (sin vehículo)' : m;
 // Los tipos de proveedor los manda el backend en panelCompras.tiposProveedor (texto u objeto { valor, etiqueta })
 const valorTipo = t => typeof t === 'string' ? t : (t.valor ?? t.id);
 const etiquetaTipo = t => typeof t === 'string' ? t.charAt(0).toUpperCase() + t.slice(1) : (t.etiqueta ?? t.nombre ?? valorTipo(t));
@@ -37,7 +40,8 @@ export function montar(el) {
   const TIPOS_VEHICULO = ['combustible', 'vehiculo'];
   const deCombustible = r => (r?.facturas || []).filter(f => TIPOS_VEHICULO.includes(f.tipo));
   const matriculaDe = f => pendientes.has(f.id) ? pendientes.get(f.id) : (f.matricula || SIN);
-  const vehiculosDelMes = () => cfg.vehiculos.filter(v => vigenteEnMes(v.desde, v.hasta, mes));
+  // Siempre los vehículos activos hoy, sea cual sea el mes de la factura (decisión de la Dirección, 25/09/2026)
+  const vehiculosDelMes = () => cfg.vehiculos.filter(v => v.activo !== false);
 
   function totales(facturas, conPendientes) {
     const t = new Map();
@@ -91,7 +95,8 @@ export function montar(el) {
     const m = matriculaDe(f);
     const sinAsignar = !m;
     const opciones = [...vehs.map(v => v.matricula)];
-    if (m && !opciones.includes(m)) opciones.push(m);
+    if (m && m !== ESTRUCTURA && !opciones.includes(m)) opciones.push(m);
+    opciones.push(ESTRUCTURA);
     return `<tr class="${sinAsignar ? 'destacada' : ''}" draggable="true" data-factura="${esc(f.id)}">
       <td>${fecha(f.fecha)}</td>
       <td>${esc(f.proveedor)}</td>
@@ -101,7 +106,7 @@ export function montar(el) {
       <td>
         <select data-factura="${esc(f.id)}" aria-label="Vehículo de la factura ${esc(f.numero || f.id)}">
           <option value="" ${sinAsignar ? 'selected' : ''}>${f.matricula ? '— Quitar vehículo —' : '— Elige vehículo —'}</option>
-          ${opciones.map(x => `<option value="${esc(x)}" ${x === m ? 'selected' : ''}>${esc(x)}${veh(x)?.modelo ? ' · ' + esc(veh(x).modelo) : ''}</option>`).join('')}
+          ${opciones.map(x => `<option value="${esc(x)}" ${x === m ? 'selected' : ''}>${esc(rotulo(x))}${veh(x)?.modelo ? ' · ' + esc(veh(x).modelo) : ''}</option>`).join('')}
         </select>
         ${pendientes.has(f.id) ? '<span class="insignia sugerido">sin guardar</span>' : ''}
       </td>
@@ -128,7 +133,7 @@ export function montar(el) {
     const tot = totales(facturas, true);
     const totComb = totales(facturas.filter(f => f.tipo === 'combustible'), true);
     const totAnt = totales(deCombustible(comprasAnt), false);
-    const matriculas = [...new Set([...vehs.map(v => v.matricula), ...[...tot.keys()].filter(Boolean)])];
+    const matriculas = [...new Set([...vehs.map(v => v.matricula), ...[...tot.keys()].filter(k => k && k !== ESTRUCTURA)]), ESTRUCTURA];
 
     const tipos = (compras.tiposProveedor || []).filter(t => valorTipo(t) !== 'sinClasificar');
     // Proveedores sin clasificar, agrupados
@@ -150,7 +155,9 @@ export function montar(el) {
           ${matriculas.map(m => {
             const actual = tot.get(m) || 0, ant = totAnt.get(m) || 0, dif = Math.round((actual - ant) * 100) / 100;
             return `<div class="destino" data-matricula="${esc(m)}">
-              <div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap"><span class="placa${veh(m)?.sinMatricula ? ' sin' : ''}"><b>${esc(m)}</b></span> <span class="tenue">${esc(veh(m)?.modelo || '')}</span></div>
+              <div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap">${m === ESTRUCTURA
+                ? '<strong>Estructura</strong> <span class="tenue">sin vehículo</span>'
+                : `<span class="placa${veh(m)?.sinMatricula ? ' sin' : ''}"><b>${esc(m)}</b></span> <span class="tenue">${esc(veh(m)?.modelo || '')}</span>`}</div>
               <div class="importe">${eur(actual)}</div>
               ${actual ? `<div class="tenue">Combustible ${eur(totComb.get(m) || 0)} · renting y mant. ${eur(Math.round((actual - (totComb.get(m) || 0)) * 100) / 100)}</div>` : ''}
               <div class="tenue">Mes anterior: ${eur(ant)}

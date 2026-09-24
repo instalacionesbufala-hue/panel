@@ -1,6 +1,13 @@
 # Decisiones del panel y dudas para el backend
 
-**El contrato vive en [`BACKEND.md`](BACKEND.md)**, lo mantiene el backend y manda sobre este fichero. Aquí queda lo que decide el panel por su cuenta y lo que el panel pregunta. Revisado contra BACKEND.md **v3.20.22** el 24/09/2026.
+**El contrato vive en [`BACKEND.md`](BACKEND.md)**, lo mantiene el backend y manda sobre este fichero. Aquí queda lo que decide el panel por su cuenta y lo que el panel pregunta. Revisado contra BACKEND.md **v3.20.24** el 25/09/2026.
+
+## Desplegable de vehículo en Combustible — hecho (v3.20.24)
+
+- El desplegable ofrece siempre los vehículos con `activo: true`, en cualquier mes, más la matrícula que ya tenga la factura aunque no esté activa.
+- Nueva opción «Estructura (sin vehículo)», que se envía como `matricula: "ESTRUCTURA"`. Cuando `panelCompras` la devuelve, cuenta como asignada (no sale en «sin vehículo») y se rotula «Estructura».
+- El resumen por vehículo tiene siempre una tarjeta «Estructura · sin vehículo», que también admite facturas arrastradas.
+- Comprobado con el simulador local.
 
 ## Guardar asignaciones en producción — hecho (v3.20.22)
 

@@ -1,6 +1,6 @@
 // Pantalla de costes de personal: volcar el coste de empresa que entrega la gestoría.
-import * as api from './api.js?v=13';
-import { esc, mesActual, sumarMeses, nombreMes, vigenteEnMes, leerImporte, importeEditable, avisar, cajaError, selectorMes } from './ui.js?v=13';
+import * as api from './api.js?v=14';
+import { esc, mesActual, sumarMeses, nombreMes, vigenteEnMes, leerImporte, importeEditable, avisar, cajaError, selectorMes } from './ui.js?v=14';
 
 // origen: 'gestoria' (nómina), 'manual' (corregido a mano) o 'estimacion' (coste de referencia, solo lectura)
 const ORIGENES_REALES = ['gestoria', 'manual'];

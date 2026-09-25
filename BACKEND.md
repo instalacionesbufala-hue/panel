@@ -154,7 +154,20 @@ Hoy el desplegable solo ofrece los vehículos **vigentes en el mes de la factura
 - **Enseñar siempre las cuatro matrículas actuales** (`vehiculos` con `activo: true`), en cualquier mes, más las que ya tenga asignadas la factura.
 - **Añadir la opción «Estructura (sin vehículo)»**, que se envía como `matricula: "ESTRUCTURA"`. El backend (v3.20.24) la acepta y la imputa a Estructura sin aviso de «sin matrícula». En `panelCompras` vuelve como `matricula: "ESTRUCTURA"`: el panel debe contarla como asignada y rotularla «Estructura».
 
-### ENCARGO NUEVO 1 — Pantalla «Ausencias» (26/09/2026 · contrato; backend en preparación)
+### YA EN PRODUCCIÓN (26/09/2026, backend v3.20.30): ausencias y Dirección General
+
+Las seis acciones (`panelAusencias`, `panelGuardarAusencia`, `panelBorrarAusencia`, `direccionLogin`, `direccionIndicadores`, `direccionInforme`) ya figuran en `accionesPanel` del `ping`: el panel y `direccion.html` dejan el modo demostración solos. **Respuestas a las dudas de DECISIONES.md:**
+1. **`accion`:** sí, todas las respuestas la traen (`panelGuardarAusencia`, `panelBorrarAusencia`, `direccion*`…).
+2. **`direccion*` en el ping:** sí, en la misma lista `accionesPanel`.
+3. **Sesión caducada en la Dirección:** misma respuesta que el panel, `{ ok:false, codigo:"sesion" }`. El testigo del panel **no** vale para la Dirección ni al revés.
+4. **Porcentajes:** llegan como **fracción** (0,82 = 82 %) con `unidad: "%"`. `valor` es `null` cuando `datoManual: true`.
+
+**Notas de uso:**
+- `panelAusencias` también devuelve las ausencias sin `idTecnico` si el nombre de la hoja no casa con ningún empleado (se enseñan con su texto). `tecnicos` trae todos, con `activo`.
+- `panelGuardarAusencia` rechaza (`ok:false`, `error`) solapes, fechas al revés y técnicos que no estén en la lista de ⚙️ Configuración; con `avisos` si la unidad no computa en ninguna brigada (SAT, Gerencia).
+- `direccionIndicadores` sin parámetros = la semana pasada, el mes pasado y el último trimestre cerrado. `semanal.porEquipo` lista todas las brigadas, también las que no han salido.
+
+### ENCARGO NUEVO 1 — Pantalla «Ausencias» (26/09/2026 · contrato)
 
 César quiere dejar de escribir en `⏱️ Ausencias` del Sheets: es lo que más toca a mano. **Empieza ya en modo demostración** (las acciones aún no figuran en `ACCIONES_PANEL_DISPONIBLES`; el backend las publicará con este mismo contrato).
 
@@ -170,7 +183,7 @@ César quiere dejar de escribir en `⏱️ Ausencias` del Sheets: es lo que más
 - **Pantalla:** calendario o lista por mes con filtros de técnico y motivo; alta rápida (técnico, desde, hasta, motivo); edición y borrado con confirmación; total de días laborables por técnico en el año (22 de vacaciones según convenio) para ver cuántos le quedan.
 - Tras guardar, los costes se recalculan solos (las ausencias mueven el coste por días trabajados).
 
-### ENCARGO NUEVO 2 — Página de la Dirección General (26/09/2026 · contrato; backend en preparación)
+### ENCARGO NUEVO 2 — Página de la Dirección General (26/09/2026 · contrato)
 
 La Dirección General ha pedido los datos de las obligaciones del puesto (Descripción de Funciones de la Dirección de Operaciones v2.0, §8 y §5.11.1). **Página aparte, solo lectura, con su propio acceso**: no ve nada del panel (nóminas, márgenes por técnico, compras…). Sugerencia: `direccion.html` en este repositorio, con el mismo estilo.
 

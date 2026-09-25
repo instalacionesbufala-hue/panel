@@ -154,6 +154,50 @@ Hoy el desplegable solo ofrece los vehículos **vigentes en el mes de la factura
 - **Enseñar siempre las cuatro matrículas actuales** (`vehiculos` con `activo: true`), en cualquier mes, más las que ya tenga asignadas la factura.
 - **Añadir la opción «Estructura (sin vehículo)»**, que se envía como `matricula: "ESTRUCTURA"`. El backend (v3.20.24) la acepta y la imputa a Estructura sin aviso de «sin matrícula». En `panelCompras` vuelve como `matricula: "ESTRUCTURA"`: el panel debe contarla como asignada y rotularla «Estructura».
 
+### ENCARGO NUEVO 1 — Pantalla «Ausencias» (26/09/2026 · contrato; backend en preparación)
+
+César quiere dejar de escribir en `⏱️ Ausencias` del Sheets: es lo que más toca a mano. **Empieza ya en modo demostración** (las acciones aún no figuran en `ACCIONES_PANEL_DISPONIBLES`; el backend las publicará con este mismo contrato).
+
+| Acción | Método | Petición | Respuesta |
+|---|---|---|---|
+| `panelAusencias` | GET | `token`, `desde?` (AAAA-MM-DD), `hasta?` | `{ ok, ausencias: [{ id, idTecnico, tecnico, equipo, desde, hasta, motivo, diasLaborables, notas }], tecnicos: [{ id, nombre, unidad }], motivos: [texto…] }` |
+| `panelGuardarAusencia` | POST | `{ id?, idTecnico, desde, hasta, motivo, notas? }` (sin `id` = alta; con `id` = edición) | `{ ok, ausencia, avisos: [] }` |
+| `panelBorrarAusencia` | POST | `{ id }` | `{ ok }` |
+
+- Fechas en `AAAA-MM-DD`. `hasta ≥ desde`. `diasLaborables` lo calcula el backend (lunes a viernes sin festivos).
+- **Solapes:** si el técnico ya tiene otra ausencia que se cruza, el backend responde `ok:false` con `error` explicando cuál. El panel lo enseña y no guarda.
+- `equipo` es la unidad del técnico en esa fecha (🔧 Asignaciones); lo pone el backend.
+- **Pantalla:** calendario o lista por mes con filtros de técnico y motivo; alta rápida (técnico, desde, hasta, motivo); edición y borrado con confirmación; total de días laborables por técnico en el año (22 de vacaciones según convenio) para ver cuántos le quedan.
+- Tras guardar, los costes se recalculan solos (las ausencias mueven el coste por días trabajados).
+
+### ENCARGO NUEVO 2 — Página de la Dirección General (26/09/2026 · contrato; backend en preparación)
+
+La Dirección General ha pedido los datos de las obligaciones del puesto (Descripción de Funciones de la Dirección de Operaciones v2.0, §8 y §5.11.1). **Página aparte, solo lectura, con su propio acceso**: no ve nada del panel (nóminas, márgenes por técnico, compras…). Sugerencia: `direccion.html` en este repositorio, con el mismo estilo.
+
+**Acceso propio (rol `direccion`).** Contraseña distinta de la del panel; el backend solo guarda su huella; sesión de 6 h; bloqueo tras 5 fallos. Ese testigo **solo** sirve para las acciones `direccion*`.
+
+| Acción | Método | Petición | Respuesta |
+|---|---|---|---|
+| `direccionLogin` | POST | `{ clave }` | `{ ok, token, caduca }` |
+| `direccionIndicadores` | GET | `token`, `semana?` (AAAA-Snn), `mes?` (AAAA-MM), `trimestre?` (AAAA-Tn) | ver abajo |
+| `direccionInforme` | GET | `token`, `semana` (AAAA-Snn) | `{ ok, nombre, md, csv }` (el Informe Semanal, formato §5.11.1) |
+
+`direccionIndicadores` devuelve bloques por periodicidad. **Cada indicador** viene como `{ clave, nombre, periodicidad, valor, unidad, formula, datoManual, nota }`, con `formula` en texto legible (§8.1: fórmulas visibles) y `datoManual: true` cuando falta un dato que no captura el sistema (se enseña «dato manual» en lugar de un número):
+
+```json
+{ "ok": true, "generado": "2026-09-28T10:00:00",
+  "semanal":    { "semana": "2026-S39", "desde": "2026-09-21", "hasta": "2026-09-27",
+                  "indicadores": [ ocupación efectiva, productividad ],
+                  "porEquipo": [ { "equipo": "Búfala 1", "ocupacion": 0.82, "productividad": 31.5 } ] },
+  "mensual":    { "mes": "2026-08",
+                  "indicadores": [ contribución por técnico-día desplegado, cobertura de ausencias,
+                                   instalaciones conformes, tasa de retorno, desviación de material ] },
+  "trimestral": { "trimestre": "2026-T3", "indicadores": [ supervivencia de incorporaciones ] },
+  "porAlta":    [ { "tecnico": "…", "alta": "2026-07-13", "diasHastaAutonomia": null, "datoManual": true } ] }
+```
+
+**La página:** cuatro secciones con su periodicidad bien visible (**Semanal · Mensual · Trimestral · Por incorporación**), selector de periodo en cada una, tarjeta por indicador con valor, unidad, fórmula (plegable) y la marca «dato manual» si toca; tabla por equipo en la semanal; y un bloque **«Informe Semanal»** con selector de semana y botón de descarga (`.md` y `.csv`, nombre `BUFALA_Informe_Operaciones_AAAA-Snn`). Sin ninguna escritura.
+
 ### Velocidad, reintentos y equipos en cualquier compra (26/09/2026, backend v3.20.28 · Panel_Compras v1.15)
 
 **Por qué iba lento y fallaba:** Apps Script atiende de una en una las ejecuciones del mismo usuario. Cada guardado recalculaba todos los costes antes de contestar (7-12 s) y la cola de cierres ocupaba 4-6 s cada minuto. Si se juntaban, Google cortaba a los ~40 s con la página «No se puede abrir el archivo en estos momentos». **Ya corregido en el backend:**

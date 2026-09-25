@@ -1,7 +1,7 @@
 // Pantalla de ausencias: sustituye a escribir a mano en «⏱️ Ausencias» del Sheets.
 // Se lee el año entero una vez (para el saldo de vacaciones) y el mes se filtra aquí.
-import * as api from './api.js?v=19';
-import { esc, fecha, hoy, mesActual, nombreMes, avisar, preguntar, cajaError, listaAvisos } from './ui.js?v=19';
+import * as api from './api.js?v=20';
+import { esc, fecha, hoy, mesActual, nombreMes, avisar, preguntar, cajaError, listaAvisos } from './ui.js?v=20';
 
 // Días de vacaciones al año según convenio (BACKEND.md). Solo sirve para enseñar cuántos quedan.
 const VACACIONES_ANUALES = 22;
@@ -34,9 +34,22 @@ export function montar(el) {
   }
 
   const colorDe = motivo => COLORES[Math.max(0, (datos?.motivos || []).indexOf(motivo)) % COLORES.length];
-  const tecnicos = () => (datos?.tecnicos || []).filter(t => !filtroTec || t.id === filtroTec);
+  // Una ausencia cuyo nombre no casa con ningún empleado llega sin idTecnico (BACKEND.md v3.20.30):
+  // se agrupa por su texto y se enseña aparte, para corregirla eligiendo el técnico.
+  const claveTec = a => a.idTecnico || 'texto:' + (a.tecnico || '?');
+  const activos = () => (datos?.tecnicos || []).filter(t => t.activo !== false);
+  // Filas del calendario y del resumen: los activos, los de baja que tengan ausencias este año y los nombres sin casar
+  function filas() {
+    const conAusencias = new Set((datos?.ausencias || []).map(claveTec));
+    const tecs = (datos?.tecnicos || []).filter(t => t.activo !== false || conAusencias.has(t.id))
+      .map(t => ({ ...t, inactivo: t.activo === false }));
+    const sinCasar = [...new Set((datos?.ausencias || []).filter(a => !a.idTecnico).map(a => a.tecnico || '?'))]
+      .map(n => ({ id: 'texto:' + n, nombre: n, unidad: '', sinCasar: true }));
+    return [...tecs, ...sinCasar];
+  }
+  const tecnicos = () => filas().filter(t => !filtroTec || t.id === filtroTec);
   const ausencias = () => (datos?.ausencias || [])
-    .filter(a => (!filtroTec || a.idTecnico === filtroTec) && (!filtroMotivo || a.motivo === filtroMotivo));
+    .filter(a => (!filtroTec || claveTec(a) === filtroTec) && (!filtroMotivo || a.motivo === filtroMotivo));
   const delMes = () => ausencias().filter(a => a.desde <= `${mes}-31` && a.hasta >= `${mes}-01`)
     .sort((a, b) => a.desde.localeCompare(b.desde) || String(a.tecnico).localeCompare(b.tecnico));
   const nombreTec = id => datos?.tecnicos?.find(t => t.id === id)?.nombre || id;
@@ -46,11 +59,11 @@ export function montar(el) {
     const r = new Map();
     for (const a of datos?.ausencias || []) {
       if (a.desde.slice(0, 4) !== anio) continue;
-      const t = r.get(a.idTecnico) || { vacaciones: 0, otros: new Map() };
+      const t = r.get(claveTec(a)) || { vacaciones: 0, otros: new Map() };
       const n = Number(a.diasLaborables || 0);
       if (esVacaciones(a.motivo)) t.vacaciones += n;
       else t.otros.set(a.motivo, (t.otros.get(a.motivo) || 0) + n);
-      r.set(a.idTecnico, t);
+      r.set(claveTec(a), t);
     }
     return r;
   }
@@ -59,8 +72,9 @@ export function montar(el) {
   const campos = v => `
     <label>Técnico<select name="idTecnico" required>
       <option value="">— Elige —</option>
-      ${(datos.tecnicos || []).map(t => `<option value="${esc(t.id)}" ${t.id === v.idTecnico ? 'selected' : ''}>${esc(t.nombre)}${t.unidad ? ' · ' + esc(t.unidad) : ''}</option>`).join('')}
+      ${(datos.tecnicos || []).filter(t => t.activo !== false || t.id === v.idTecnico).map(t => `<option value="${esc(t.id)}" ${t.id === v.idTecnico ? 'selected' : ''}>${esc(t.nombre)}${t.unidad ? ' · ' + esc(t.unidad) : ''}${t.activo === false ? ' (de baja)' : ''}</option>`).join('')}
     </select></label>
+    ${v.id && !v.idTecnico ? `<p class="caja-aviso">En la hoja pone «${esc(v.tecnico || '?')}», que no coincide con ningún empleado. Elige el técnico para corregirla.</p>` : ''}
     <div class="fila-campos">
       <label>Desde<input type="date" name="desde" value="${esc(v.desde || '')}" required></label>
       <label>Hasta (incluido)<input type="date" name="hasta" value="${esc(v.hasta || '')}" required></label>
@@ -138,7 +152,7 @@ export function montar(el) {
     const n = diasDelMes(mes);
     const dias = Array.from({ length: n }, (_, i) => `${mes}-${dos(i + 1)}`);
     const tecs = tecnicos();
-    const deTec = id => ausencias().filter(a => a.idTecnico === id && a.desde <= `${mes}-${dos(n)}` && a.hasta >= `${mes}-01`);
+    const deTec = id => ausencias().filter(a => claveTec(a) === id && a.desde <= `${mes}-${dos(n)}` && a.hasta >= `${mes}-01`);
     return `<div class="tabla-scroll calendario"><table>
       <thead><tr><th class="cal-tec">Técnico</th>${dias.map(d => {
         const s = diaSemana(d), finde = s === 0 || s === 6;
@@ -146,10 +160,11 @@ export function montar(el) {
       }).join('')}</tr></thead>
       <tbody>${tecs.map(t => {
         const suyas = deTec(t.id);
-        return `<tr><th class="cal-tec" scope="row">${esc(t.nombre)}${t.unidad ? `<small>${esc(t.unidad)}</small>` : ''}</th>${dias.map(d => {
+        return `<tr class="${t.sinCasar ? 'sin-casar' : ''}"><th class="cal-tec" scope="row">${esc(t.nombre)}${t.sinCasar ? '<small class="error">no coincide con ningún empleado</small>' : t.inactivo ? '<small>de baja</small>' : t.unidad ? `<small>${esc(t.unidad)}</small>` : ''}</th>${dias.map(d => {
           const s = diaSemana(d), finde = s === 0 || s === 6;
           const a = suyas.find(x => x.desde <= d && x.hasta >= d);
-          if (!a) return `<td class="cal-celda ${finde ? 'finde' : ''}" data-accion="nueva-en" data-tec="${esc(t.id)}" data-dia="${d}" title="Añadir ausencia a ${esc(t.nombre)} el ${fecha(d)}"></td>`;
+          if (!a) return t.sinCasar || t.inactivo ? `<td class="cal-celda ${finde ? 'finde' : ''} inerte"></td>`
+            : `<td class="cal-celda ${finde ? 'finde' : ''}" data-accion="nueva-en" data-tec="${esc(t.id)}" data-dia="${d}" title="Añadir ausencia a ${esc(t.nombre)} el ${fecha(d)}"></td>`;
           return `<td class="cal-celda con ${finde ? 'finde' : ''}" style="--c:${colorDe(a.motivo)}" data-accion="editar" data-id="${esc(a.id)}"
             title="${esc(a.motivo)} · ${fecha(a.desde)} a ${fecha(a.hasta)}${a.notas ? ' · ' + esc(a.notas) : ''}"></td>`;
         }).join('')}</tr>`;
@@ -180,7 +195,7 @@ export function montar(el) {
         <h2>Alta rápida</h2>
         <div class="fila-campos">
           <label>Técnico<select name="idTecnico" required><option value="">— Elige —</option>
-            ${(datos.tecnicos || []).map(t => `<option value="${esc(t.id)}">${esc(t.nombre)}</option>`).join('')}</select></label>
+            ${activos().map(t => `<option value="${esc(t.id)}">${esc(t.nombre)}</option>`).join('')}</select></label>
           <label>Desde<input type="date" name="desde" required></label>
           <label>Hasta (incluido)<input type="date" name="hasta" required></label>
           <label>Motivo<select name="motivo" required><option value="">— Elige —</option>
@@ -195,7 +210,7 @@ export function montar(el) {
           <h2 style="margin:0">${esc(nombreMes(mes))}</h2>
           <span class="empuje"></span>
           <label>Técnico<select id="filtro-tec"><option value="">Todos</option>
-            ${(datos.tecnicos || []).map(t => `<option value="${esc(t.id)}" ${t.id === filtroTec ? 'selected' : ''}>${esc(t.nombre)}</option>`).join('')}</select></label>
+            ${filas().map(t => `<option value="${esc(t.id)}" ${t.id === filtroTec ? 'selected' : ''}>${esc(t.nombre)}${t.sinCasar ? ' (sin casar)' : t.inactivo ? ' (de baja)' : ''}</option>`).join('')}</select></label>
           <label>Motivo<select id="filtro-motivo"><option value="">Todos</option>
             ${(datos.motivos || []).map(m => `<option ${m === filtroMotivo ? 'selected' : ''}>${esc(m)}</option>`).join('')}</select></label>
         </div>
@@ -207,7 +222,7 @@ export function montar(el) {
         <div class="tabla-scroll"><table>
           <thead><tr><th>Técnico</th><th>Equipo</th><th>Motivo</th><th>Desde</th><th>Hasta</th><th class="num">Días laborables</th><th>Notas</th><th></th></tr></thead>
           <tbody>${lista.map(a => `<tr>
-            <td><strong>${esc(a.tecnico || nombreTec(a.idTecnico))}</strong></td><td>${esc(a.equipo || '—')}</td>
+            <td><strong>${esc(a.tecnico || nombreTec(a.idTecnico))}</strong>${a.idTecnico ? '' : ' <span class="insignia error" title="El nombre de la hoja no coincide con ningún empleado. Corrígela eligiendo el técnico.">sin casar</span>'}</td><td>${esc(a.equipo || '—')}</td>
             <td><span class="insignia motivo" style="--c:${colorDe(a.motivo)}">${esc(a.motivo)}</span></td>
             <td>${fecha(a.desde)}</td><td>${fecha(a.hasta)}</td><td class="num">${esc(a.diasLaborables ?? '—')}</td>
             <td class="tenue">${esc(a.notas || '')}</td>

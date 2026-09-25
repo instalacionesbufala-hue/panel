@@ -400,6 +400,8 @@ function crearDemo() {
       { id: 'AU3', idTecnico: 'T03', desde: `${M}-16`, hasta: `${M}-16`, motivo: 'Asuntos propios', notas: '' },
       { id: 'AU4', idTecnico: 'T05', desde: `${M}-21`, hasta: `${M}-23`, motivo: 'Formación', notas: 'Curso de recarga VE' },
       { id: 'AU5', idTecnico: 'T02', desde: `${A}-07-20`, hasta: `${A}-07-31`, motivo: 'Vacaciones', notas: '' },
+      // Como en la hoja real: un nombre escrito a mano que no casa con ningún empleado
+      { id: 'AU6', idTecnico: null, tecnicoTexto: 'Javi G.', desde: `${M}-02`, hasta: `${M}-03`, motivo: 'Asuntos propios', notas: '' },
     ],
   };
 }
@@ -417,7 +419,7 @@ function demoDiasLaborables(desde, hasta) {
 }
 function demoAusencia(a) {
   const t = demo.tecnicos.find(x => x.id === a.idTecnico);
-  return { ...a, tecnico: t?.nombre || a.idTecnico, equipo: demoUnidadDe(a.idTecnico, a.desde) || '', diasLaborables: demoDiasLaborables(a.desde, a.hasta) };
+  return { ...a, tecnico: t?.nombre || a.tecnicoTexto || a.idTecnico, equipo: (a.idTecnico && demoUnidadDe(a.idTecnico, a.desde)) || '', diasLaborables: demoDiasLaborables(a.desde, a.hasta) };
 }
 
 // Como el backend: facturas de combustible o vehículo sin matrícula ni ESTRUCTURA, desde mayo de 2026
@@ -480,12 +482,13 @@ function demoResponder(accion, params, p) {
     case 'panelAusencias': {
       const lista = demo.ausencias.filter(a => (!params.hasta || a.desde <= params.hasta) && (!params.desde || a.hasta >= params.desde));
       return { ok: true, ausencias: lista.map(demoAusencia),
-        tecnicos: demo.tecnicos.filter(t => !t.baja || t.baja >= hoyIso()).map(t => ({ id: t.id, nombre: t.nombre, unidad: demoUnidadDe(t.id, hoyIso()) || '' })),
+        tecnicos: demo.tecnicos.map(t => ({ id: t.id, nombre: t.nombre, unidad: demoUnidadDe(t.id, hoyIso()) || '', activo: !t.baja || t.baja >= hoyIso() })),
         motivos: demo.motivos };
     }
     case 'panelGuardarAusencia': {
       if (!p.idTecnico || !p.desde || !p.hasta || !p.motivo) return { ok: false, error: 'Faltan datos: técnico, desde, hasta y motivo.' };
       if (p.hasta < p.desde) return { ok: false, error: 'La fecha «hasta» no puede ser anterior a «desde».' };
+      if (!demo.tecnicos.some(t => t.id === p.idTecnico)) return { ok: false, error: 'Ese técnico no está en la lista de ⚙️ Configuración.' };
       const choque = demo.ausencias.find(a => a.id !== p.id && a.idTecnico === p.idTecnico && a.desde <= p.hasta && a.hasta >= p.desde);
       if (choque) return { ok: false, error: `Se solapa con otra ausencia del mismo técnico: ${choque.motivo} del ${choque.desde} al ${choque.hasta}.` };
       const a = { id: p.id || 'AU' + (Math.max(0, ...demo.ausencias.map(x => Number(x.id.slice(2)) || 0)) + 1), idTecnico: p.idTecnico, desde: p.desde, hasta: p.hasta, motivo: p.motivo, notas: p.notas || '' };

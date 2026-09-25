@@ -408,3 +408,6 @@ tbody tr:hover td.cal-celda.con { background: color-mix(in srgb, var(--c) 78%, #
 .indicador details p { margin: 6px 0 0; font-family: var(--letra-mono); font-size: .78rem; line-height: 1.5; }
 .subtitulo { margin: 16px 0 8px; font-size: .95rem; }
 .informe-md { white-space: pre-wrap; background: var(--superficie-2); border: 1px solid var(--borde); border-radius: 14px; padding: 14px 16px; font: .82rem/1.55 var(--letra-mono); max-height: 460px; overflow: auto; margin: 0; }
+.cal-celda.inerte { cursor: default; }
+.cal-celda.inerte:hover { background: transparent; }
+tr.sin-casar .cal-tec { color: var(--error); }

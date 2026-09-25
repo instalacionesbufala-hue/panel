@@ -418,3 +418,18 @@ tr.sin-casar .cal-tec { color: var(--error); }
 .tabla-precios input.notas { width: 100%; min-width: 180px; }
 .tabla-precios .antes { font-size: .74rem; color: var(--aviso); font-weight: 700; min-height: 1em; }
 .tabla-precios .antes:empty { display: none; }
+
+/* ── Régimen de cada unidad ── */
+.unidad .regimen {
+  justify-self: start; font: 700 .78rem var(--letra); color: var(--tenue); background: var(--superficie-2);
+  border: 1px dashed var(--borde-fuerte); border-radius: 10px; padding: 5px 10px; cursor: pointer; text-align: left;
+}
+.unidad .regimen:hover { border-color: var(--acento); color: var(--acento); }
+.unidad .regimen.propio { color: var(--acento); background: var(--acento-suave); border-style: solid; border-color: transparent; }
+.unidad .regimen span { font-weight: 600; opacity: .8; }
+.unidad .regimen:disabled { cursor: default; }
+.historial-regimen summary { cursor: pointer; font-weight: 700; }
+.historial-regimen table { margin-top: 6px; font-size: .86rem; }
+.cambio-regimen { border: 1px solid var(--borde); border-radius: 14px; padding: 10px 12px 12px; margin: 0; display: grid; gap: 8px; }
+.cambio-regimen legend { font-size: .78rem; font-weight: 800; color: var(--tenue); text-transform: uppercase; letter-spacing: .06em; padding: 0 4px; }
+.dialogo:has(.cambio-regimen) { width: min(620px, calc(100vw - 2rem)); }

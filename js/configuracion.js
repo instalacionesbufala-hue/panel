@@ -1,6 +1,6 @@
 // Pantalla de configuración: festivos y precios de coste de material, para no tener que escribir en el Sheets.
-import * as api from './api.js?v=21';
-import { esc, eur, fecha, hoy, leerImporte, importeEditable, avisar, preguntar, cajaError, listaAvisos } from './ui.js?v=21';
+import * as api from './api.js?v=22';
+import { esc, eur, fecha, hoy, leerImporte, importeEditable, avisar, preguntar, cajaError, listaAvisos } from './ui.js?v=22';
 
 const AMBITOS = ['Nacional', 'Comunidad de Madrid', 'Local'];
 const DIAS = ['domingo', 'lunes', 'martes', 'miércoles', 'jueves', 'viernes', 'sábado'];

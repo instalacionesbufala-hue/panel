@@ -1,7 +1,7 @@
 // Pantalla de ausencias: sustituye a escribir a mano en «⏱️ Ausencias» del Sheets.
 // Se lee el año entero una vez (para el saldo de vacaciones) y el mes se filtra aquí.
-import * as api from './api.js?v=21';
-import { esc, fecha, hoy, mesActual, nombreMes, avisar, preguntar, cajaError, listaAvisos } from './ui.js?v=21';
+import * as api from './api.js?v=22';
+import { esc, fecha, hoy, mesActual, nombreMes, avisar, preguntar, cajaError, listaAvisos } from './ui.js?v=22';
 
 // Días de vacaciones al año según convenio (BACKEND.md). Solo sirve para enseñar cuántos quedan.
 const VACACIONES_ANUALES = 22;

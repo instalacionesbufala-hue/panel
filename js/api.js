@@ -7,7 +7,8 @@ export const URL_BACKEND = 'https://script.google.com/macros/s/AKfycbxMMeyP9g75p
 export const TODAS = ['panelLogin', 'panelConfig', 'panelCompras', 'panelLiquidacion', 'panelCostes', 'panelGuardarConfig',
   'panelAsignarCombustible', 'panelClasificarProveedor', 'panelCostesTecnico', 'panelFacturaDetalle', 'panelClasificarFactura',
   'panelAusencias', 'panelGuardarAusencia', 'panelBorrarAusencia',
-  'panelFestivos', 'panelGuardarFestivo', 'panelBorrarFestivo', 'panelPrecios', 'panelGuardarPrecios'];
+  'panelFestivos', 'panelGuardarFestivo', 'panelBorrarFestivo', 'panelPrecios', 'panelGuardarPrecios',
+  'panelParametrosUnidades', 'panelGuardarParametroUnidad'];
 // Acciones de la página de la Dirección General (direccion.html): testigo propio, solo lectura.
 export const TODAS_DIRECCION = ['direccionLogin', 'direccionIndicadores', 'direccionInforme'];
 
@@ -207,6 +208,7 @@ const LECTURA_DE = {
   panelGuardarFestivo: 'panelFestivos',
   panelBorrarFestivo: 'panelFestivos',
   panelGuardarPrecios: 'panelPrecios',
+  panelGuardarParametroUnidad: 'panelParametrosUnidades',
 };
 
 // Cuando Apps Script falla, Google devuelve una página HTML. Se extrae su mensaje para mostrarlo.
@@ -291,6 +293,10 @@ export const clasificarProveedor = (proveedor, tipo) => llamar('panelClasificarP
 export const leerAusencias = (desde, hasta) => llamar('panelAusencias', { params: { desde, hasta } });
 export const guardarAusencia = a => llamar('panelGuardarAusencia', { metodo: 'POST', cuerpo: a });
 export const borrarAusencia = id => llamar('panelBorrarAusencia', { metodo: 'POST', cuerpo: { id } });
+
+// Régimen de cada unidad (encargo 4): servicios/día y jornada con fecha. Con borrar: true se elimina esa fila.
+export const leerParametrosUnidades = () => llamar('panelParametrosUnidades');
+export const guardarParametroUnidad = p => llamar('panelGuardarParametroUnidad', { metodo: 'POST', cuerpo: p });
 
 // Configuración (encargo 3 del 26/09/2026): festivos y precios de coste de material.
 // Festivo: sin fechaAnterior = alta; con ella = edición. Precios: solo coste y notas; id y concepto no se tocan.
@@ -414,6 +420,8 @@ function crearDemo() {
       [`${A}-10-12`, 'Fiesta Nacional de España', 'Nacional'], [`${A}-11-01`, 'Todos los Santos', 'Nacional'],
       [`${A}-12-08`, 'Inmaculada Concepción', 'Nacional'], [`${A}-12-25`, 'Natividad del Señor', 'Nacional'],
     ].map(([fecha, nombre, ambito]) => ({ fecha, nombre, ambito })),
+    // Régimen por unidad: Búfala 1 con contrato reducido desde el 09/09/2026 (BACKEND.md, encargo 4)
+    parametros: [{ unidad: 'Búfala 1', desde: '2026-09-09', servicios: 1, jornada: 300, horario: '08:30-13:30', notas: 'Contrato reducido' }],
     // Precios de ejemplo (no son los de la hoja)
     precios: [
       { titulo: 'Cableado', conceptos: [
@@ -533,6 +541,17 @@ function demoResponder(accion, params, p) {
     case 'panelBorrarAusencia':
       demo.ausencias = demo.ausencias.filter(a => a.id !== p.id);
       return { ok: true, accion };
+    case 'panelParametrosUnidades':
+      return { ok: true, accion, porDefecto: { servicios: 2, jornada: 462 }, parametros: demo.parametros };
+    case 'panelGuardarParametroUnidad': {
+      if (!demo.unidades.some(u => u.id === p.unidad)) return { ok: false, error: `No existe la unidad «${p.unidad}».` };
+      if (!p.desde) return { ok: false, error: 'Falta la fecha.' };
+      if (p.borrar) { demo.parametros = demo.parametros.filter(x => !(x.unidad === p.unidad && x.desde === p.desde)); return { ok: true, accion, costesEnCola: true }; }
+      if (!(p.servicios >= 0 && p.servicios <= 4) || !(p.jornada >= 1 && p.jornada <= 720)) return { ok: false, error: 'Servicios de 0 a 4 y jornada de 1 a 720 minutos.' };
+      const parametro = { unidad: p.unidad, desde: p.desde, servicios: p.servicios, jornada: p.jornada, horario: p.horario || '', notas: p.notas || '' };
+      demo.parametros = demo.parametros.filter(x => !(x.unidad === p.unidad && x.desde === p.desde)).concat(parametro);
+      return { ok: true, accion, parametro, costesEnCola: true };
+    }
     case 'panelFestivos':
       return { ok: true, accion, festivos: demo.festivos.filter(f => !params.anio || f.fecha.startsWith(String(params.anio))).sort((a, b) => a.fecha.localeCompare(b.fecha)) };
     case 'panelGuardarFestivo': {

@@ -1,6 +1,7 @@
 // Pantalla de unidades: formar unidades arrastrando técnicos y vehículos.
-import * as api from './api.js?v=21';
-import { esc, fecha, hoy, vigente, avisar, preguntar, cajaError, listaAvisos } from './ui.js?v=21';
+import * as api from './api.js?v=22';
+import { esc, fecha, hoy, vigente, avisar, preguntar, cajaError, listaAvisos } from './ui.js?v=22';
+import * as regimen from './regimen.js?v=22';
 
 const LIBRE = '__libre__';
 // El rol no restringe nada (BACKEND.md): cualquier técnico va a cualquier unidad. Solo se avisa
@@ -22,6 +23,7 @@ export function montar(el) {
   let errorGuardado = null;
   let guardando = false;
   let arrastre = null;   // { tipo: 'tec'|'veh', id }
+  let parametros = null, errorParametros = null;   // régimen de cada unidad (servicios/día y jornada)
 
   const soloLectura = () => dia < hoy();
 
@@ -38,6 +40,18 @@ export function montar(el) {
       errorCarga = e;
     }
     pintar();
+    cargarParametros();
+  }
+  // Aparte: si falla, la composición se sigue viendo y cada tarjeta dice que el régimen no ha llegado
+  async function cargarParametros() {
+    errorParametros = null;
+    try { parametros = await regimen.leer(); } catch (e) { errorParametros = e; }
+    if (cfg) pintar();
+  }
+  function insigniaRegimen(u) {
+    if (!parametros) return `<button type="button" class="regimen" data-accion="regimen" data-unidad="${esc(u)}" ${errorParametros ? '' : 'disabled'}>${errorParametros ? 'Régimen no disponible · reintentar' : 'Cargando régimen…'}</button>`;
+    const r = regimen.regimenEn(parametros, u, dia);
+    return `<button type="button" class="regimen ${r.porDefecto ? '' : 'propio'}" data-accion="regimen" data-unidad="${esc(u)}" title="Ver el historial o cambiarlo a partir de una fecha">${esc(regimen.texto(r))}${r.porDefecto ? '' : ` <span>desde ${fecha(r.desde)}</span>`}</button>`;
   }
 
   function unidadesVisibles() {
@@ -237,6 +251,7 @@ export function montar(el) {
                 <header><h3>${esc(nombreUnidad(u))}</h3>
                   ${unidad(u)?.computaVariable === false ? '<span class="insignia rosa" title="Esta unidad y sus técnicos quedan fuera del cálculo del variable">no computa variable</span>' : ''}
                   <span class="insignia">${c.tecs.length === 0 ? 'sin técnicos' : c.tecs.length === 1 ? '1 técnico' : c.tecs.length + ' técnicos'}</span></header>
+                ${insigniaRegimen(u)}
                 ${c.choques.length ? `<p class="insignia error">Dato incoherente en el servidor: ${esc(c.choques.join('; '))}</p>` : ''}
                 <div class="hueco" data-unidad="${esc(u)}" data-acepta="tec">
                   <span class="hueco-titulo">Técnicos</span>
@@ -376,6 +391,11 @@ export function montar(el) {
     if (!b) return;
     const a = b.dataset.accion;
     if (a === 'recargar') recargar();
+    if (a === 'regimen') {
+      if (!parametros) return cargarParametros();
+      const u = b.dataset.unidad;
+      if (await regimen.abrir({ unidad: u, nombre: nombreUnidad(u), datos: parametros, dia })) await cargarParametros();
+    }
     if (a === 'guardar') guardar();
     if (a === 'descartar') { recalcular(); pintar(); }
     if (a === 'hoy') { const d = el.querySelector('#dia'); d.value = hoy(); d.dispatchEvent(new Event('change', { bubbles: true })); }

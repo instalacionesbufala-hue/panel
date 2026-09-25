@@ -1,6 +1,19 @@
 # Decisiones del panel y dudas para el backend
 
-**El contrato vive en [`BACKEND.md`](BACKEND.md)**, lo mantiene el backend y manda sobre este fichero. Aquí queda lo que decide el panel por su cuenta y lo que el panel pregunta. Revisado contra BACKEND.md **v3.20.30** el 26/09/2026.
+**El contrato vive en [`BACKEND.md`](BACKEND.md)**, lo mantiene el backend y manda sobre este fichero. Aquí queda lo que decide el panel por su cuenta y lo que el panel pregunta. Revisado contra BACKEND.md **v3.20.34** el 26/09/2026.
+
+## Régimen de cada unidad: servicios/día y jornada con fecha — hecho (encargo 4, v3.20.34)
+
+En producción desde que el ping anuncia `panelParametrosUnidades` y `panelGuardarParametroUnidad`. La escritura va emparejada con esa lectura. Código en `js/regimen.js`, enganchado a «Unidades».
+- **En cada tarjeta de unidad**, su régimen el día elegido: «2 servicios/día · 7 h 42 min», o el suyo propio en azul con «desde dd/mm/aaaa», por ejemplo «1 servicio/día · 5 h (08:30-13:30) desde 09/09/2026».
+  - Se calcula en el navegador con la fila de esa unidad cuya fecha sea la más reciente sin pasar del día; sin filas, `porDefecto`.
+  - Se lee aparte de `panelConfig`: si falla, la composición se sigue viendo y la tarjeta dice «Régimen no disponible · reintentar».
+- **Al pulsarlo**, un diálogo con:
+  - el régimen del día y la regla de cálculo del backend (capacidad = mín(servicios, técnicos presentes); jornada del día = jornada × capacidad ÷ servicios);
+  - el **historial** de la unidad, con «Borrar» en cada fila (envía `borrar: true` con la unidad y la fecha, tras confirmar);
+  - **«Cambiar a partir de…»**: fecha (por defecto hoy, o el día elegido si es futuro), servicios/día (0-4), entrada y salida y notas. Con entrada y salida, la jornada en minutos se calcula sola y se puede corregir a mano (1-720). `horario` se envía como «HH:MM-HH:MM».
+- Tras guardar o borrar se vuelve a leer el régimen. Si la respuesta trae `costesEnCola`, sale el aviso de siempre.
+- Comprobado con el simulador local: régimen propio de Búfala 1 y por defecto en las demás, cambio de Búfala 2 con horario 08:00-14:00 (sale 360 min) y borrado de una fila del historial.
 
 ## Pestaña «Configuración»: festivos y precios de material — hecha en modo demostración (encargo 3, 26/09/2026)
 

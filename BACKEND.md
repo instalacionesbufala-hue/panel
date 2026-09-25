@@ -154,6 +154,20 @@ Hoy el desplegable solo ofrece los vehículos **vigentes en el mes de la factura
 - **Enseñar siempre las cuatro matrículas actuales** (`vehiculos` con `activo: true`), en cualquier mes, más las que ya tenga asignadas la factura.
 - **Añadir la opción «Estructura (sin vehículo)»**, que se envía como `matricula: "ESTRUCTURA"`. El backend (v3.20.24) la acepta y la imputa a Estructura sin aviso de «sin matrícula». En `panelCompras` vuelve como `matricula: "ESTRUCTURA"`: el panel debe contarla como asignada y rotularla «Estructura».
 
+### ENCARGO NUEVO 4 — Parámetros de cada unidad: capacidad y jornada con fecha (26/09/2026 · backend v3.20.34, YA EN PRODUCCIÓN al implementar)
+
+Decisión de César: la capacidad y la jornada **no son iguales para todos los equipos ni para siempre**. Búfala 1 tiene contrato reducido desde el 09/09/2026: **1 instalación al día, de 8:30 a 13:30 (300 min)**. Cuando llegue otro vehículo, sus técnicos trabajarán como **equipos individuales**. El panel debe dejar fijarlo, con fecha, igual que ya deja mover técnicos entre unidades.
+
+| Acción | Método | Petición | Respuesta |
+|---|---|---|---|
+| `panelParametrosUnidades` | GET | `token` | `{ ok, accion, porDefecto: { servicios: 2, jornada: 462 }, parametros: [{ unidad, desde, servicios, jornada, horario, notas }] }` |
+| `panelGuardarParametroUnidad` | POST | `{ unidad, desde, servicios, jornada, horario?, notas?, borrar? }` | `{ ok, accion, parametro }` · con `borrar: true` elimina el de esa unidad y fecha |
+
+- `servicios` = instalaciones que la unidad puede hacer al día (0-4). `jornada` = minutos de trabajo al día (1-720; 462 = 7 h 42 min). `horario` es texto libre («08:30-13:30»).
+- Cada fila vale **desde su fecha** hasta la siguiente de la misma unidad. Sin ninguna fila, la unidad usa `porDefecto`.
+- **Cómo lo usa el backend** (para enseñarlo en la pantalla): capacidad del día = mín(servicios/día, técnicos presentes ese día según asignaciones y ausencias); jornada del día = jornada × capacidad ÷ servicios. De ahí salen el rendimiento, el aprovechamiento de jornada, la página de la Dirección y el Informe Semanal.
+- **Pantalla** (dentro de «Unidades»): en cada unidad, su régimen actual («2 servicios/día · 7 h 42 min» o el que toque) y un historial con fecha; botón «Cambiar a partir de…» con fecha, servicios/día, horario (que calcule la jornada en minutos) y notas. Tras guardar, los costes y KPI se recalculan solos en 1-2 minutos.
+
 ### ENCARGO NUEVO 3 — «Configuración»: festivos y precios de material (26/09/2026 · contrato; backend en preparación)
 
 Siguiente paso del objetivo de César: **que no tenga que escribir nunca en el Google Sheets**. Nueva pestaña del panel, **«Configuración»**, con dos apartados. Empieza en modo demostración; el backend publicará estas acciones con este contrato.

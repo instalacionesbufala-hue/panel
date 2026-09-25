@@ -1,14 +1,12 @@
 // Pantalla de combustible: asignar cada gasto de vehículo (combustible, renting, mantenimiento) a su matrícula.
-import * as api from './api.js?v=15';
-import { esc, eur, fecha, mesActual, sumarMeses, nombreMes, avisar, cajaError, selectorMes } from './ui.js?v=15';
+import * as api from './api.js?v=16';
+import { esc, eur, fecha, mesActual, sumarMeses, nombreMes, avisar, cajaError, selectorMes } from './ui.js?v=16';
+import { abrirVisor, valorTipo, etiquetaTipo } from './visor.js?v=16';
 
 const SIN = '';
 // Gasto imputado a Estructura sin vehículo concreto (BACKEND.md v3.20.24): cuenta como asignado
 const ESTRUCTURA = 'ESTRUCTURA';
 const rotulo = m => m === ESTRUCTURA ? 'Estructura (sin vehículo)' : m;
-// Los tipos de proveedor los manda el backend en panelCompras.tiposProveedor (texto u objeto { valor, etiqueta })
-const valorTipo = t => typeof t === 'string' ? t : (t.valor ?? t.id);
-const etiquetaTipo = t => typeof t === 'string' ? t.charAt(0).toUpperCase() + t.slice(1) : (t.etiqueta ?? t.nombre ?? valorTipo(t));
 
 export function montar(el) {
   let mes = mesActual();
@@ -91,6 +89,13 @@ export function montar(el) {
     pintar();
   }
 
+  // Vista previa y clasificación de una factura; al guardar se vuelve a leer (refresca los pendientes)
+  async function verFactura(id) {
+    const resumen = (compras.sinClasificar || []).find(f => f.id === id) || (compras.facturas || []).find(f => f.id === id);
+    if (!resumen) return;
+    if (await abrirVisor({ resumen, compras })) recargar();
+  }
+
   function filaFactura(f, vehs) {
     const m = matriculaDe(f);
     const sinAsignar = !m;
@@ -99,7 +104,7 @@ export function montar(el) {
     opciones.push(ESTRUCTURA);
     return `<tr class="${sinAsignar ? 'destacada' : ''}" draggable="true" data-factura="${esc(f.id)}">
       <td>${fecha(f.fecha)}</td>
-      <td>${esc(f.proveedor)}</td>
+      <td>${esc(f.proveedor)} <button class="boton secundario mini" data-accion="ver" data-id="${esc(f.id)}" title="Ver la factura y cambiar su clasificación">Ver</button></td>
       <td><span class="insignia">${f.tipo === 'combustible' ? 'combustible' : 'renting o mant.'}</span></td>
       <td>${esc(f.numero || '')}</td>
       <td class="num">${eur(f.importeSinIva)}</td>
@@ -136,11 +141,11 @@ export function montar(el) {
     const matriculas = [...new Set([...vehs.map(v => v.matricula), ...[...tot.keys()].filter(k => k && k !== ESTRUCTURA)]), ESTRUCTURA];
 
     const tipos = (compras.tiposProveedor || []).filter(t => valorTipo(t) !== 'sinClasificar');
-    // Proveedores sin clasificar, agrupados
+    // Sin clasificar: agrupadas por proveedor, pero cada factura se clasifica por separado
     const porProveedor = new Map();
     for (const f of compras.sinClasificar || []) {
-      const p = porProveedor.get(f.proveedor) || { n: 0, total: 0, esLinea: !!f.esLinea };
-      p.n++; p.total += Number(f.importeSinIva || 0);
+      const p = porProveedor.get(f.proveedor) || { facturas: [], total: 0, esLinea: !!f.esLinea };
+      p.facturas.push(f); p.total += Number(f.importeSinIva || 0);
       porProveedor.set(f.proveedor, p);
     }
 
@@ -185,15 +190,27 @@ export function montar(el) {
       </section>
 
       ${porProveedor.size ? `<section class="bloque">
-        <h2>Proveedores sin clasificar</h2>
-        <p class="tenue">Clasifícalos una vez y sus próximas facturas entrarán solas en su sitio.</p>
-        <div class="tabla-scroll"><table>
-          <thead><tr><th>Proveedor</th><th class="num">Facturas</th><th class="num">Importe sin IVA</th><th>Clasificar como</th></tr></thead>
-          <tbody>${[...porProveedor].map(([p, d]) => `<tr>
-            <td>${esc(p)}${d.esLinea ? ' <span class="insignia" title="Línea de una factura de proveedor mixto: se guarda como regla para ese texto">línea de factura mixta</span>' : ''}</td><td class="num">${d.n}</td><td class="num">${eur(d.total)}</td>
-            <td><div class="botones-tipo">${tipos.map(t => `<button class="boton secundario mini" data-accion="clasificar" data-proveedor="${esc(p)}" data-tipo="${esc(valorTipo(t))}" ${clasificando.has(p) ? 'disabled' : ''}>${esc(etiquetaTipo(t))}</button>`).join('') || '<span class="tenue">El servidor no ha enviado los tipos de proveedor.</span>'}</div></td>
-          </tr>`).join('')}</tbody>
-        </table></div>
+        <h2>Facturas sin clasificar</h2>
+        <p class="tenue">Abre cada factura para verla y clasificarla. Si todas las de un proveedor son del mismo tipo, aplícalo al proveedor entero y sus próximas facturas entrarán solas.</p>
+        ${[...porProveedor].map(([p, d]) => `<div class="grupo-proveedor">
+          <div class="grupo-cabecera">
+            <div><strong>${esc(p)}</strong>${d.esLinea ? ' <span class="insignia" title="Línea de una factura de proveedor mixto: se guarda como regla para ese texto">línea de factura mixta</span>' : ''}
+              <span class="tenue">· ${d.facturas.length} factura${d.facturas.length === 1 ? '' : 's'} · ${eur(d.total)}</span></div>
+            <span class="empuje"></span>
+            <label class="en-linea">Todas como
+              <select data-proveedor-tipo="${esc(p)}" aria-label="Tipo para todo el proveedor ${esc(p)}">
+                <option value="">— Elige —</option>
+                ${tipos.map(t => `<option value="${esc(valorTipo(t))}">${esc(etiquetaTipo(t))}</option>`).join('')}
+              </select></label>
+            <button class="boton secundario mini" data-accion="clasificar" data-proveedor="${esc(p)}" ${clasificando.has(p) ? 'disabled' : ''}>Aplicar a todo el proveedor</button>
+          </div>
+          <div class="tabla-scroll"><table>
+            <thead><tr><th>Fecha</th><th>Número</th><th class="num">Importe sin IVA</th><th></th></tr></thead>
+            <tbody>${d.facturas.map(f => `<tr>
+              <td>${fecha(f.fecha)}</td><td>${esc(f.numero || '—')}</td><td class="num">${eur(f.importeSinIva)}</td>
+              <td class="num"><button class="boton mini" data-accion="ver" data-id="${esc(f.id)}">Ver y clasificar</button></td></tr>`).join('')}</tbody>
+          </table></div>
+        </div>`).join('')}
       </section>` : ''}`;
   }
 
@@ -244,7 +261,12 @@ export function montar(el) {
     if (a === 'ir-mes') irAMes(b.dataset.mes);
     if (a === 'guardar') guardar();
     if (a === 'descartar') { pendientes.clear(); errorGuardado = null; pintar(); }
-    if (a === 'clasificar') clasificar(b.dataset.proveedor, b.dataset.tipo);
+    if (a === 'clasificar') {
+      const sel = [...el.querySelectorAll('select[data-proveedor-tipo]')].find(s => s.dataset.proveedorTipo === b.dataset.proveedor);
+      if (!sel?.value) { avisar('Elige primero el tipo para todo el proveedor.', 'aviso'); sel?.focus(); return; }
+      clasificar(b.dataset.proveedor, sel.value);
+    }
+    if (a === 'ver') verFactura(b.dataset.id);
   }
   function alArrastrar(ev) {
     const tr = ev.target.closest?.('tr[data-factura]');

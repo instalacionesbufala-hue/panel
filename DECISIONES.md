@@ -1,6 +1,19 @@
 # Decisiones del panel y dudas para el backend
 
-**El contrato vive en [`BACKEND.md`](BACKEND.md)**, lo mantiene el backend y manda sobre este fichero. Aquí queda lo que decide el panel por su cuenta y lo que el panel pregunta. Revisado contra BACKEND.md **v3.20.24** el 25/09/2026.
+**El contrato vive en [`BACKEND.md`](BACKEND.md)**, lo mantiene el backend y manda sobre este fichero. Aquí queda lo que decide el panel por su cuenta y lo que el panel pregunta. Revisado contra BACKEND.md **v3.20.27** el 25/09/2026.
+
+## Clasificar factura a factura, con vista previa — hecho (v3.20.27)
+
+- **Visor de factura** (`js/visor.js`). Se abre con «Ver y clasificar» en cada factura sin clasificar y con «Ver» en cualquier factura de la tabla de gastos de vehículo. A la izquierda, el PDF de `panelFacturaDetalle`; si no hay PDF, el motivo (`pdfError`) y la tabla de líneas con base y total. A la derecha, los datos y los tipos de `tiposFactura`.
+  - El PDF se convierte de base64 a un `blob:` y se enseña en un `<iframe>`, no como `data:`, porque los navegadores bloquean a menudo los PDF `data:` dentro de un iframe. Si el tipo es una imagen, se enseña como imagen.
+- **Factura a factura.** «Guardar clasificación» envía `panelClasificarFactura { id, tipo }`. Las sin clasificar se siguen agrupando por proveedor, con «Todas como [tipo] · Aplicar a todo el proveedor» (`panelClasificarProveedor`) para cuando todas son iguales.
+- **Material de uso.** Al elegirlo aparecen casillas con `equiposDisponibles`, todas marcadas, y el reparto («30,00 € a cada uno»). Sin ninguna marcada, el botón de guardar no se activa. Se envía `equipos` solo con `materialUso`.
+- **Emparejamiento:** `panelClasificarFactura` va con `panelCompras`, como las demás escrituras de compras.
+- **Contador de pendientes en azul** (`--acento`).
+- Tras cada clasificación se vuelve a leer `panelCompras`, así que el aviso y el contador se refrescan.
+- Comprobado con el simulador local (en la demostración no hay PDF, así que se probó la vista de líneas): una factura suelta como material de uso entre dos equipos, el proveedor entero como herramienta y reabrir una factura ya clasificada.
+
+**Duda para el backend:** la tabla de BACKEND.md da como respuesta de `panelClasificarFactura` `{ ok, id, tipo, equipos, avisos }`, sin `accion`. El panel exige `accion` en toda escritura (regla general del contrato) y, si no llega, dice «no se da por guardado». ¿Lo repite, como las demás?
 
 ## Aviso de facturas pendientes — hecho (Panel_Compras v1.13)
 
@@ -45,7 +58,9 @@ Además, el panel guarda en memoria una copia de `panelConfig` durante 10 minuto
 
 ## Dudas abiertas para el backend
 
-Ninguna por ahora. Pendiente del backend: altas y bajas de técnicos, vehículos y unidades dentro de `panelGuardarConfig`, y `panelLiquidacion`.
+1. **`panelClasificarFactura` y `accion`:** ¿la respuesta repite `accion`? Detalle en «Clasificar factura a factura».
+
+Además, Pendiente del backend: altas y bajas de técnicos, vehículos y unidades dentro de `panelGuardarConfig`, y `panelLiquidacion`.
 
 ## Resueltas por BACKEND.md (23/09/2026, tarde) — hecho
 

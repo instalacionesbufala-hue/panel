@@ -5,7 +5,7 @@ export const URL_BACKEND = 'https://script.google.com/macros/s/AKfycbxMMeyP9g75p
 
 // Acciones del panel que conoce esta interfaz.
 export const TODAS = ['panelLogin', 'panelConfig', 'panelCompras', 'panelLiquidacion', 'panelCostes', 'panelGuardarConfig',
-  'panelAsignarCombustible', 'panelClasificarProveedor', 'panelCostesTecnico'];
+  'panelAsignarCombustible', 'panelClasificarProveedor', 'panelCostesTecnico', 'panelFacturaDetalle', 'panelClasificarFactura'];
 
 // Qué acciones van a producción lo dice el backend: GET ?action=ping devuelve
 // { panel: true, accionesPanel: [...] }. Las que figuren ahí van a producción; el resto se
@@ -163,6 +163,7 @@ const LECTURA_DE = {
   panelGuardarConfig: 'panelConfig',
   panelAsignarCombustible: 'panelCompras',
   panelClasificarProveedor: 'panelCompras',
+  panelClasificarFactura: 'panelCompras',
   panelCostesTecnico: 'panelCostes',
 };
 
@@ -244,6 +245,11 @@ export const guardarConfig = async cambios => {
 };
 export const asignarCombustible = asignaciones => llamar('panelAsignarCombustible', { metodo: 'POST', cuerpo: { asignaciones } });
 export const clasificarProveedor = (proveedor, tipo) => llamar('panelClasificarProveedor', { metodo: 'POST', cuerpo: { proveedor, tipo } });
+// Vista previa de una factura o línea (PDF en base64 o, si no hay, sus líneas)
+export const leerFacturaDetalle = id => llamar('panelFacturaDetalle', { params: { id } });
+// Clasificación de una sola factura; con tipo «materialUso», equipos entre los que se reparte a partes iguales
+export const clasificarFactura = (id, tipo, equipos) =>
+  llamar('panelClasificarFactura', { metodo: 'POST', cuerpo: { id, tipo, ...(equipos ? { equipos } : {}) } });
 export const guardarCostes = (mes, costes, origen) => llamar('panelCostesTecnico', { metodo: 'POST', cuerpo: { mes, costes, origen } });
 
 // ════════════════════════════════════════════════════════
@@ -328,8 +334,10 @@ function crearDemo() {
       ],
     },
     sinClasificar: { [M]: [
-      { id: 'd8', fecha: `${M}-10`, proveedor: 'GASOLINERA NUEVA SL', importeSinIva: 45.5, esLinea: false },
-      { id: 'd10#1', fecha: `${M}-11`, proveedor: 'TIENDA ONLINE SL · Cargador de baterías', importeSinIva: 29.9, esLinea: true },
+      { id: 'd8', fecha: `${M}-10`, proveedor: 'GASOLINERA NUEVA SL', importeSinIva: 45.5, esLinea: false, numero: 'GN-311' },
+      { id: 'd11', fecha: `${M}-14`, proveedor: 'FERRETERÍA EJEMPLO SA', importeSinIva: 90, esLinea: false, numero: 'FE-1022' },
+      { id: 'd12', fecha: `${M}-18`, proveedor: 'FERRETERÍA EJEMPLO SA', importeSinIva: 34.2, esLinea: false, numero: 'FE-1057' },
+      { id: 'd10#1', fecha: `${M}-11`, proveedor: 'TIENDA ONLINE SL · Cargador de baterías', importeSinIva: 29.9, esLinea: true, numero: 'TO-88' },
     ] },
     // Costes de empresa ya volcados por la gestoría, por mes: idTec → importe
     costes: { [P]: { T01: 2579.29, T02: 2310.4, T03: 2598.75, T06: 2490.1 } },
@@ -390,7 +398,30 @@ function demoResponder(accion, params, p) {
       return { ok: true, tecnicos: conActivo(demo.tecnicos, 'alta', 'baja'), vehiculos: conActivo(demo.vehiculos, 'desde', 'hasta'),
         unidades: demo.unidades, asignaciones: demo.asignaciones, tramos: demo.tramos, ejercicio: demo.ejercicio, limites: demo.limites };
     case 'panelCompras':
-      return { ok: true, mes: params.mes, facturas: demo.facturas[params.mes] || [], sinClasificar: demo.sinClasificar[params.mes] || [], tiposProveedor: demo.tiposProveedor, pendientes: demoPendientes() };
+      return { ok: true, mes: params.mes, facturas: demo.facturas[params.mes] || [], sinClasificar: demo.sinClasificar[params.mes] || [],
+        tiposProveedor: demo.tiposProveedor, pendientes: demoPendientes(),
+        tiposFactura: [...demo.tiposProveedor.filter(t => t.valor !== 'mixto'), { valor: 'materialUso', etiqueta: 'Material de uso (se reparte entre equipos)' }],
+        equiposDisponibles: demo.unidades.filter(u => u.tipo !== 'no_productiva' && u.activa !== false).map(u => u.id) };
+    case 'panelFacturaDetalle': {
+      const f = Object.values(demo.facturas).flat().concat(Object.values(demo.sinClasificar).flat()).find(x => x.id === params.id);
+      if (!f) return { ok: false, error: 'No existe esa factura.' };
+      const base = f.importeSinIva;
+      return { ok: true, factura: { id: f.id, numero: f.numero || '', proveedor: f.proveedor, fecha: f.fecha, subtotal: base, total: Math.round(base * 121) / 100, notas: 'Factura de ejemplo de la demostración.' },
+        lineas: [{ concepto: 'Artículo de ejemplo', descripcion: f.proveedor, unidades: 1, precio: base, importe: base }],
+        pdfError: 'En la demostración no hay PDF.' };
+    }
+    case 'panelClasificarFactura': {
+      if (p.tipo === 'materialUso' && !(p.equipos || []).length) return { ok: false, error: 'Con «Material de uso» hay que elegir al menos un equipo.' };
+      for (const [mes, lista] of Object.entries(demo.sinClasificar)) {
+        const i = lista.findIndex(f => f.id === p.id);
+        if (i >= 0) { const [f] = lista.splice(i, 1); (demo.facturas[mes] ||= []).push({ ...f, tipo: p.tipo, equipos: p.equipos || [], manual: true, matricula: null }); }
+      }
+      for (const lista of Object.values(demo.facturas)) {
+        const f = lista.find(x => x.id === p.id);
+        if (f) Object.assign(f, { tipo: p.tipo, equipos: p.equipos || [], manual: true });
+      }
+      return { ok: true, accion, id: p.id, tipo: p.tipo, equipos: p.equipos || [], avisos: [] };
+    }
     case 'panelCostes':
       return { ok: true, desde: params.desde, hasta: params.hasta, costes: Object.entries(demo.costes)
         .filter(([m]) => m >= params.desde && m <= params.hasta)

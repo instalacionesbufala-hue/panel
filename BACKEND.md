@@ -154,6 +154,19 @@ Hoy el desplegable solo ofrece los vehículos **vigentes en el mes de la factura
 - **Enseñar siempre las cuatro matrículas actuales** (`vehiculos` con `activo: true`), en cualquier mes, más las que ya tenga asignadas la factura.
 - **Añadir la opción «Estructura (sin vehículo)»**, que se envía como `matricula: "ESTRUCTURA"`. El backend (v3.20.24) la acepta y la imputa a Estructura sin aviso de «sin matrícula». En `panelCompras` vuelve como `matricula: "ESTRUCTURA"`: el panel debe contarla como asignada y rotularla «Estructura».
 
+### ENCARGO NUEVO 5 — Ausencias: Holded es la fuente oficial (26/09/2026 · backend v3.20.38)
+
+Decisión de César: **Holded es la aplicación oficial de la empresa**. Las ausencias se registran en Holded y cada mañana (7:00) el backend copia las **aceptadas** a ⏱️ Ausencias; si se cancelan o rechazan en Holded, desaparecen. Si una de Holded coincide con una metida a mano, la manual se sustituye.
+
+**Cambios en el contrato:**
+- `panelAusencias`: cada ausencia trae **`origen`**: `"holded"` o `"manual"` (el `id` de las de Holded empieza por `H`).
+- `panelGuardarAusencia` y `panelBorrarAusencia` **rechazan** las de origen Holded con `ok:false` y `error`: «Esta ausencia viene de Holded: cámbiala allí…».
+
+**Qué pide César en la pantalla «Ausencias»:**
+1. Las de **Holded, de solo consulta**: etiqueta «Holded» visible, sin botones de editar ni borrar, y una nota «Se gestionan en Holded · se actualizan cada mañana».
+2. El alta manual pasa a ser **excepcional**: botón secundario («Añadir ausencia fuera de Holded») con aviso de que si luego se registra en Holded, la de Holded la sustituirá.
+3. Arriba, un aviso fijo: «Las ausencias se registran en Holded».
+
 ### ENCARGO NUEVO 4 — Parámetros de cada unidad: capacidad y jornada con fecha (26/09/2026 · backend v3.20.34, YA EN PRODUCCIÓN al implementar)
 
 Decisión de César: la capacidad y la jornada **no son iguales para todos los equipos ni para siempre**. Búfala 1 tiene contrato reducido desde el 09/09/2026: **1 instalación al día, de 8:30 a 13:30 (300 min)**. Cuando llegue otro vehículo, sus técnicos trabajarán como **equipos individuales**. El panel debe dejar fijarlo, con fecha, igual que ya deja mover técnicos entre unidades.

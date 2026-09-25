@@ -1,7 +1,7 @@
 # Contrato del backend — fuente de verdad
 
 Lo mantiene el backend. **Si algo de aquí contradice a `DECISIONES.md`, manda este fichero.**
-Última actualización: 25/09/2026 · backend **v3.20.27** (`Panel_Config.gs` v1.4, `Panel_Compras.gs` v1.14, `Panel_Costes.gs` v1.2).
+Última actualización: 25/09/2026 · backend **v3.20.28** (`Panel_Config.gs` v1.4, `Panel_Compras.gs` v1.15, `Panel_Costes.gs` v1.2).
 
 ## Cómo saber qué está disponible
 
@@ -153,6 +153,21 @@ Hoy el desplegable solo ofrece los vehículos **vigentes en el mes de la factura
 
 - **Enseñar siempre las cuatro matrículas actuales** (`vehiculos` con `activo: true`), en cualquier mes, más las que ya tenga asignadas la factura.
 - **Añadir la opción «Estructura (sin vehículo)»**, que se envía como `matricula: "ESTRUCTURA"`. El backend (v3.20.24) la acepta y la imputa a Estructura sin aviso de «sin matrícula». En `panelCompras` vuelve como `matricula: "ESTRUCTURA"`: el panel debe contarla como asignada y rotularla «Estructura».
+
+### Velocidad, reintentos y equipos en cualquier compra (26/09/2026, backend v3.20.28 · Panel_Compras v1.15)
+
+**Por qué iba lento y fallaba:** Apps Script atiende de una en una las ejecuciones del mismo usuario. Cada guardado recalculaba todos los costes antes de contestar (7-12 s) y la cola de cierres ocupaba 4-6 s cada minuto. Si se juntaban, Google cortaba a los ~40 s con la página «No se puede abrir el archivo en estos momentos». **Ya corregido en el backend:**
+- Los guardados (`panelClasificarFactura`, `panelAsignarCombustible`, `panelClasificarProveedor`, `panelGuardarConfig`, `panelCostesTecnico`) **contestan en 1-2 s**. Traen `costesEnCola: true`: los costes, la rentabilidad y el KPI se actualizan solos en ~1-2 minutos.
+- `panelCompras` tiene caché de servidor (5 min) que se invalida con cada guardado. Viene `cache: true` cuando sale de ella.
+
+**Encargos para el panel:**
+1. **Reintento automático.** Si una petición devuelve la página de error de Google (HTML en vez de JSON, «No se puede abrir el archivo…») o tarda más de 30 s, **reintentar sola una vez** a los 4 s, enseñando «Reintentando…». Solo si falla el segundo intento, el aviso de error de siempre. Todas las escrituras son seguras de repetir.
+2. **Tras guardar**, enseñar un aviso discreto: «Guardado. Los costes se actualizan en 1-2 minutos».
+3. **Elegir equipos tras clasificar cualquier compra de material o herramienta.** Decisión de César: las facturas de Amazon y otros proveedores suelen ser herramienta o material comprado fuera de Saltoki, que **no** entra en el material de las instalaciones, y **suman como coste a los equipos que él elija, en el mes de la factura** (a partes iguales).
+   - `panelCompras` trae `tiposConEquipos` (hoy `["herramienta","material","materialUso"]`).
+   - Al elegir uno de esos tipos, aparecen las casillas de `equiposDisponibles`. Son **opcionales** para `herramienta` y `material` (sin ninguna marcada: herramienta → Estructura; material → no suma, porque es el de los cierres, p. ej. Saltoki) y **obligatorias** para `materialUso`.
+   - Se guarda con `panelClasificarFactura { id, tipo, equipos }`. Para cambiar solo los equipos, se manda el mismo `tipo` con los equipos nuevos.
+   - En la lista, cada factura enseña sus equipos (campo `equipos`) y el reparto («20,00 € a cada uno»).
 
 ### Clasificar factura a factura, con vista previa (25/09/2026, backend v3.20.27 · Panel_Compras v1.14)
 

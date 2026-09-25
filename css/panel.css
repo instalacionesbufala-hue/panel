@@ -411,3 +411,10 @@ tbody tr:hover td.cal-celda.con { background: color-mix(in srgb, var(--c) 78%, #
 .cal-celda.inerte { cursor: default; }
 .cal-celda.inerte:hover { background: transparent; }
 tr.sin-casar .cal-tec { color: var(--error); }
+
+/* ── Configuración ── */
+.alta-festivo { margin-bottom: 10px; }
+.tabla-precios tr.familia th { background: var(--superficie-2); color: var(--texto); font-size: .8rem; text-align: left; }
+.tabla-precios input.notas { width: 100%; min-width: 180px; }
+.tabla-precios .antes { font-size: .74rem; color: var(--aviso); font-weight: 700; min-height: 1em; }
+.tabla-precios .antes:empty { display: none; }

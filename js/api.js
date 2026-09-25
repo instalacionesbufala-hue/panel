@@ -6,7 +6,8 @@ export const URL_BACKEND = 'https://script.google.com/macros/s/AKfycbxMMeyP9g75p
 // Acciones del panel que conoce esta interfaz.
 export const TODAS = ['panelLogin', 'panelConfig', 'panelCompras', 'panelLiquidacion', 'panelCostes', 'panelGuardarConfig',
   'panelAsignarCombustible', 'panelClasificarProveedor', 'panelCostesTecnico', 'panelFacturaDetalle', 'panelClasificarFactura',
-  'panelAusencias', 'panelGuardarAusencia', 'panelBorrarAusencia'];
+  'panelAusencias', 'panelGuardarAusencia', 'panelBorrarAusencia',
+  'panelFestivos', 'panelGuardarFestivo', 'panelBorrarFestivo', 'panelPrecios', 'panelGuardarPrecios'];
 // Acciones de la página de la Dirección General (direccion.html): testigo propio, solo lectura.
 export const TODAS_DIRECCION = ['direccionLogin', 'direccionIndicadores', 'direccionInforme'];
 
@@ -203,6 +204,9 @@ const LECTURA_DE = {
   panelCostesTecnico: 'panelCostes',
   panelGuardarAusencia: 'panelAusencias',
   panelBorrarAusencia: 'panelAusencias',
+  panelGuardarFestivo: 'panelFestivos',
+  panelBorrarFestivo: 'panelFestivos',
+  panelGuardarPrecios: 'panelPrecios',
 };
 
 // Cuando Apps Script falla, Google devuelve una página HTML. Se extrae su mensaje para mostrarlo.
@@ -287,6 +291,14 @@ export const clasificarProveedor = (proveedor, tipo) => llamar('panelClasificarP
 export const leerAusencias = (desde, hasta) => llamar('panelAusencias', { params: { desde, hasta } });
 export const guardarAusencia = a => llamar('panelGuardarAusencia', { metodo: 'POST', cuerpo: a });
 export const borrarAusencia = id => llamar('panelBorrarAusencia', { metodo: 'POST', cuerpo: { id } });
+
+// Configuración (encargo 3 del 26/09/2026): festivos y precios de coste de material.
+// Festivo: sin fechaAnterior = alta; con ella = edición. Precios: solo coste y notas; id y concepto no se tocan.
+export const leerFestivos = anio => llamar('panelFestivos', { params: { anio } });
+export const guardarFestivo = f => llamar('panelGuardarFestivo', { metodo: 'POST', cuerpo: f });
+export const borrarFestivo = fecha => llamar('panelBorrarFestivo', { metodo: 'POST', cuerpo: { fecha } });
+export const leerPrecios = () => llamar('panelPrecios');
+export const guardarPrecios = cambios => llamar('panelGuardarPrecios', { metodo: 'POST', cuerpo: { cambios } });
 
 // Dirección General: va a producción solo si el ping la anuncia; su testigo lo guarda direccion.js.
 // Usa la misma cola y el mismo reintento que el panel. Nunca se simula aquí: la demostración la pone direccion.js.
@@ -394,6 +406,28 @@ function crearDemo() {
     costes: { [P]: { T01: 2579.29, T02: 2310.4, T03: 2598.75, T06: 2490.1 } },
     excepciones: { [M]: [{ tipo: 'obra sin ejecutantes', detalle: 'E2631532 · 619,05 €' }] },
     motivos: ['Vacaciones', 'Asuntos propios', 'Permiso retribuido', 'Baja', 'Formación', 'Otros'],
+    festivos: [
+      [`${A}-01-01`, 'Año Nuevo', 'Nacional'], [`${A}-01-06`, 'Epifanía del Señor', 'Nacional'],
+      [`${A}-04-02`, 'Jueves Santo', 'Comunidad de Madrid'], [`${A}-04-03`, 'Viernes Santo', 'Nacional'],
+      [`${A}-05-01`, 'Fiesta del Trabajo', 'Nacional'], [`${A}-05-02`, 'Fiesta de la Comunidad de Madrid', 'Comunidad de Madrid'],
+      [`${A}-05-15`, 'San Isidro', 'Local'], [`${A}-08-15`, 'Asunción de la Virgen', 'Nacional'],
+      [`${A}-10-12`, 'Fiesta Nacional de España', 'Nacional'], [`${A}-11-01`, 'Todos los Santos', 'Nacional'],
+      [`${A}-12-08`, 'Inmaculada Concepción', 'Nacional'], [`${A}-12-25`, 'Natividad del Señor', 'Nacional'],
+    ].map(([fecha, nombre, ambito]) => ({ fecha, nombre, ambito })),
+    // Precios de ejemplo (no son los de la hoja)
+    precios: [
+      { titulo: 'Cableado', conceptos: [
+        { id: 'CAB-6', concepto: 'Cable 6 mm² (m)', coste: 1.35, notas: '' },
+        { id: 'CAB-10', concepto: 'Cable 10 mm² (m)', coste: 2.2, notas: '' },
+        { id: 'CAB-16', concepto: 'Cable 16 mm² (m)', coste: 3.4, notas: 'Precio de septiembre' } ] },
+      { titulo: 'Protecciones', conceptos: [
+        { id: 'PRO-MAG', concepto: 'Magnetotérmico 2P 40 A', coste: 14.9, notas: '' },
+        { id: 'PRO-DIF', concepto: 'Diferencial 2P 40 A 30 mA tipo A', coste: 38.5, notas: '' },
+        { id: 'PRO-SOB', concepto: 'Protector de sobretensiones', coste: 62, notas: '' } ] },
+      { titulo: 'Canalización', conceptos: [
+        { id: 'CAN-TUB', concepto: 'Tubo corrugado 25 mm (m)', coste: 0.42, notas: '' },
+        { id: 'CAN-BAN', concepto: 'Bandeja 60×100 (m)', coste: 7.8, notas: '' } ] },
+    ],
     ausencias: [
       { id: 'AU1', idTecnico: 'T01', desde: `${A}-08-03`, hasta: `${A}-08-14`, motivo: 'Vacaciones', notas: '' },
       { id: 'AU2', idTecnico: 'T02', desde: `${M}-07`, hasta: `${M}-11`, motivo: 'Vacaciones', notas: '' },
@@ -499,6 +533,32 @@ function demoResponder(accion, params, p) {
     case 'panelBorrarAusencia':
       demo.ausencias = demo.ausencias.filter(a => a.id !== p.id);
       return { ok: true, accion };
+    case 'panelFestivos':
+      return { ok: true, accion, festivos: demo.festivos.filter(f => !params.anio || f.fecha.startsWith(String(params.anio))).sort((a, b) => a.fecha.localeCompare(b.fecha)) };
+    case 'panelGuardarFestivo': {
+      if (!/^\d{4}-\d{2}-\d{2}$/.test(p.fecha || '') || !String(p.nombre || '').trim()) return { ok: false, error: 'Faltan la fecha o el nombre del festivo.' };
+      if (demo.festivos.some(f => f.fecha === p.fecha && f.fecha !== p.fechaAnterior)) return { ok: false, error: `Ya hay un festivo el ${p.fecha}.` };
+      const festivo = { fecha: p.fecha, nombre: String(p.nombre).trim(), ambito: String(p.ambito || '').trim() };
+      demo.festivos = demo.festivos.filter(f => f.fecha !== (p.fechaAnterior || p.fecha)).concat(festivo);
+      return { ok: true, accion, festivo };
+    }
+    case 'panelBorrarFestivo':
+      demo.festivos = demo.festivos.filter(f => f.fecha !== p.fecha);
+      return { ok: true, accion };
+    case 'panelPrecios':
+      return { ok: true, accion, familias: demo.precios };
+    case 'panelGuardarPrecios': {
+      const avisos = [];
+      let guardados = 0;
+      for (const c of p.cambios || []) {
+        const x = demo.precios.flatMap(f => f.conceptos).find(k => k.id === c.id);
+        if (!x) { avisos.push(`No existe el concepto ${c.id}: no se ha guardado.`); continue; }
+        if (typeof c.coste === 'number') x.coste = c.coste;
+        if (c.notas !== undefined) x.notas = c.notas;
+        guardados++;
+      }
+      return { ok: true, accion, guardados, avisos };
+    }
     case 'panelFacturaDetalle': {
       const f = Object.values(demo.facturas).flat().concat(Object.values(demo.sinClasificar).flat()).find(x => x.id === params.id);
       if (!f) return { ok: false, error: 'No existe esa factura.' };

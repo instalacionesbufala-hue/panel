@@ -2,6 +2,27 @@
 
 **El contrato vive en [`BACKEND.md`](BACKEND.md)**, lo mantiene el backend y manda sobre este fichero. Aquí queda lo que decide el panel por su cuenta y lo que el panel pregunta. Revisado contra BACKEND.md **v3.20.30** el 26/09/2026.
 
+## Pestaña «Configuración»: festivos y precios de material — hecha en modo demostración (encargo 3, 26/09/2026)
+
+Nueva pestaña «Configuración» (`js/configuracion.js`). Irá sola a producción cuando el ping anuncie `panelFestivos`, `panelGuardarFestivo`, `panelBorrarFestivo`, `panelPrecios` y `panelGuardarPrecios`. Las escrituras van emparejadas con su lectura (`panelFestivos` y `panelPrecios`).
+
+**Festivos**
+- Lista del año con selector (año anterior, actual y siguiente), el día de la semana y el ámbito.
+- **Alta rápida** con fecha, nombre y ámbito. El ámbito se escribe libre, con sugerencias: «Nacional», «Comunidad de Madrid» y «Local».
+- Antes de enviar, el panel avisa si la fecha ya existe; el backend también la rechaza.
+- **Corregir** envía `fechaAnterior`. **Borrar** pide confirmación y avisa de que el día volverá a ser laborable.
+- **Fin de semana:** la marca «fin de semana» sale en la fila, en el recuento del año y en el aviso al guardar («no resta días laborables»).
+
+**Precios de coste de material**
+- Tabla agrupada por familia (`titulo`). Solo se editan en línea el **coste** y las **notas**; `id` y `concepto` se ven, pero no se pueden cambiar.
+- Mientras no se guarda, la fila queda marcada y enseña «antes X €». Un cambio que vuelve al valor original deja de contar.
+- Un solo **«Guardar cambios»** envía `{ cambios: [{ id, coste, notas? }] }`, solo con los que han cambiado. Las `notas` se envían solo si cambian.
+- Antes de guardar, una confirmación recuerda que se recalcula el coste de material de todas las instalaciones. Hay «Descartar», y el panel avisa al salir de la pantalla con cambios sin guardar.
+- Los `avisos` de la respuesta se enseñan siempre.
+- Comprobado con el simulador local:
+  - festivos: alta repetida rechazada, alta correcta y marca de fin de semana;
+  - precios: cambio y vuelta al original, y dos cambios guardados de una vez.
+
 ## Pantalla «Ausencias» — hecha, en producción desde v3.20.30
 
 Nueva pestaña «Ausencias» (`js/ausencias.js`). Desde la v3.20.30 el ping anuncia `panelAusencias`, `panelGuardarAusencia` y `panelBorrarAusencia`, así que va a producción sola. Las dos escrituras van emparejadas con `panelAusencias`.

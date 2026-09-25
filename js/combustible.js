@@ -1,7 +1,7 @@
 // Pantalla de combustible: asignar cada gasto de vehículo (combustible, renting, mantenimiento) a su matrícula.
-import * as api from './api.js?v=20';
-import { esc, eur, fecha, mesActual, sumarMeses, nombreMes, avisar, cajaError, selectorMes } from './ui.js?v=20';
-import { abrirVisor, valorTipo, etiquetaTipo, tiposConEquipos, textoReparto } from './visor.js?v=20';
+import * as api from './api.js?v=21';
+import { esc, eur, fecha, mesActual, sumarMeses, nombreMes, avisar, cajaError, selectorMes } from './ui.js?v=21';
+import { abrirVisor, valorTipo, etiquetaTipo, tiposConEquipos, textoReparto } from './visor.js?v=21';
 
 const SIN = '';
 // Gasto imputado a Estructura sin vehículo concreto (BACKEND.md v3.20.24): cuenta como asignado

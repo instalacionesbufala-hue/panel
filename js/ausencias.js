@@ -1,0 +1,271 @@
+// Pantalla de ausencias: sustituye a escribir a mano en «⏱️ Ausencias» del Sheets.
+// Se lee el año entero una vez (para el saldo de vacaciones) y el mes se filtra aquí.
+import * as api from './api.js?v=19';
+import { esc, fecha, hoy, mesActual, nombreMes, avisar, preguntar, cajaError, listaAvisos } from './ui.js?v=19';
+
+// Días de vacaciones al año según convenio (BACKEND.md). Solo sirve para enseñar cuántos quedan.
+const VACACIONES_ANUALES = 22;
+const esVacaciones = motivo => /vacacion/i.test(String(motivo || ''));
+// Color estable por motivo, para el calendario
+const COLORES = ['#3B5BF0', '#12B3A0', '#E39A1B', '#F0609A', '#7C6CF6', '#1F8FD6', '#4E9E3A', '#D9467A'];
+const DIAS_SEMANA = ['D', 'L', 'M', 'X', 'J', 'V', 'S'];
+
+const dos = n => String(n).padStart(2, '0');
+const diasDelMes = mes => { const [a, m] = mes.split('-').map(Number); return new Date(a, m, 0).getDate(); };
+const diaSemana = iso => new Date(iso + 'T12:00').getDay();
+
+export function montar(el) {
+  let mes = mesActual();
+  let anio = mes.slice(0, 4);
+  let datos = null;            // respuesta de panelAusencias del año
+  let errorCarga = null;
+  let filtroTec = '', filtroMotivo = '';
+  let guardando = false;
+
+  async function recargar() {
+    errorCarga = null;
+    pintar(true);
+    try {
+      datos = await api.leerAusencias(`${anio}-01-01`, `${anio}-12-31`);
+    } catch (e) {
+      errorCarga = e;
+    }
+    pintar();
+  }
+
+  const colorDe = motivo => COLORES[Math.max(0, (datos?.motivos || []).indexOf(motivo)) % COLORES.length];
+  const tecnicos = () => (datos?.tecnicos || []).filter(t => !filtroTec || t.id === filtroTec);
+  const ausencias = () => (datos?.ausencias || [])
+    .filter(a => (!filtroTec || a.idTecnico === filtroTec) && (!filtroMotivo || a.motivo === filtroMotivo));
+  const delMes = () => ausencias().filter(a => a.desde <= `${mes}-31` && a.hasta >= `${mes}-01`)
+    .sort((a, b) => a.desde.localeCompare(b.desde) || String(a.tecnico).localeCompare(b.tecnico));
+  const nombreTec = id => datos?.tecnicos?.find(t => t.id === id)?.nombre || id;
+
+  // Días laborables por técnico en el año, por motivo. La ausencia cuenta en el año en que empieza.
+  function resumenAnual() {
+    const r = new Map();
+    for (const a of datos?.ausencias || []) {
+      if (a.desde.slice(0, 4) !== anio) continue;
+      const t = r.get(a.idTecnico) || { vacaciones: 0, otros: new Map() };
+      const n = Number(a.diasLaborables || 0);
+      if (esVacaciones(a.motivo)) t.vacaciones += n;
+      else t.otros.set(a.motivo, (t.otros.get(a.motivo) || 0) + n);
+      r.set(a.idTecnico, t);
+    }
+    return r;
+  }
+
+  // ── Formulario (alta y edición) en el diálogo ──
+  const campos = v => `
+    <label>Técnico<select name="idTecnico" required>
+      <option value="">— Elige —</option>
+      ${(datos.tecnicos || []).map(t => `<option value="${esc(t.id)}" ${t.id === v.idTecnico ? 'selected' : ''}>${esc(t.nombre)}${t.unidad ? ' · ' + esc(t.unidad) : ''}</option>`).join('')}
+    </select></label>
+    <div class="fila-campos">
+      <label>Desde<input type="date" name="desde" value="${esc(v.desde || '')}" required></label>
+      <label>Hasta (incluido)<input type="date" name="hasta" value="${esc(v.hasta || '')}" required></label>
+    </div>
+    <label>Motivo<select name="motivo" required>
+      <option value="">— Elige —</option>
+      ${(datos.motivos || []).map(m => `<option ${m === v.motivo ? 'selected' : ''}>${esc(m)}</option>`).join('')}
+    </select></label>
+    <label>Notas (opcional)<input name="notas" value="${esc(v.notas || '')}" maxlength="200"></label>`;
+
+  function validar(v) {
+    if (!v.idTecnico || !v.desde || !v.hasta || !v.motivo) return 'Faltan datos: técnico, desde, hasta y motivo.';
+    if (v.hasta < v.desde) return 'La fecha «hasta» no puede ser anterior a «desde».';
+    return null;
+  }
+
+  async function guardar(v) {
+    const r = await api.guardarAusencia({ ...(v.id ? { id: v.id } : {}), idTecnico: v.idTecnico, desde: v.desde, hasta: v.hasta, motivo: v.motivo, notas: (v.notas || '').trim() });
+    listaAvisos(r.avisos);
+    const a = r.ausencia || v;
+    avisar(`${v.id ? 'Ausencia corregida' : 'Ausencia guardada'}: ${nombreTec(a.idTecnico)}, ${a.motivo.toLowerCase()} del ${fecha(a.desde)} al ${fecha(a.hasta)}${a.diasLaborables != null ? ` (${a.diasLaborables} día${a.diasLaborables === 1 ? '' : 's'} laborable${a.diasLaborables === 1 ? '' : 's'})` : ''}.`);
+  }
+
+  // Abre el diálogo; si el servidor rechaza (p. ej. un solape), se vuelve a abrir con lo escrito y el motivo
+  async function editar(inicial) {
+    let v = { ...inicial }, error = null;
+    for (;;) {
+      const form = await preguntar(v.id ? 'Corregir ausencia' : 'Nueva ausencia',
+        (error ? cajaError(error, 'No se ha guardado') : '') + campos(v), { aceptar: 'Guardar' });
+      if (!form) return;
+      v = { ...v, ...Object.fromEntries(new FormData(form)) };
+      const falta = validar(v);
+      if (falta) { error = new Error(falta); continue; }
+      try { await guardar(v); await recargar(); return; } catch (e) { error = e; }
+    }
+  }
+
+  async function borrar(a) {
+    const ok = await preguntar('Borrar ausencia',
+      `<p>¿Borrar la ausencia de <strong>${esc(a.tecnico || nombreTec(a.idTecnico))}</strong>: ${esc(a.motivo)} del ${fecha(a.desde)} al ${fecha(a.hasta)}?</p>
+       <p class="tenue">Los costes de ese periodo se recalcularán solos.</p>`,
+      { aceptar: 'Borrar', peligro: true });
+    if (!ok) return;
+    try {
+      await api.borrarAusencia(a.id);
+      avisar('Ausencia borrada.');
+      await recargar();
+    } catch (e) {
+      avisar(e.message, 'error');
+    }
+  }
+
+  // Alta rápida desde la barra de arriba
+  async function altaRapida(form) {
+    const v = Object.fromEntries(new FormData(form));
+    const falta = validar(v);
+    if (falta) { avisar(falta, 'error'); return; }
+    guardando = true; pintar();
+    try {
+      await guardar(v);
+      guardando = false;
+      await recargar();
+      return;
+    } catch (e) {
+      avisar(e.message, 'error', 12000);   // p. ej. el solape que explica el backend
+    }
+    guardando = false; pintar();
+    // Se conserva lo escrito
+    const f = el.querySelector('#alta-ausencia');
+    if (f) for (const [k, val] of Object.entries(v)) if (f.elements[k]) f.elements[k].value = val;
+  }
+
+  // ── Pintado ──
+  function calendario() {
+    const n = diasDelMes(mes);
+    const dias = Array.from({ length: n }, (_, i) => `${mes}-${dos(i + 1)}`);
+    const tecs = tecnicos();
+    const deTec = id => ausencias().filter(a => a.idTecnico === id && a.desde <= `${mes}-${dos(n)}` && a.hasta >= `${mes}-01`);
+    return `<div class="tabla-scroll calendario"><table>
+      <thead><tr><th class="cal-tec">Técnico</th>${dias.map(d => {
+        const s = diaSemana(d), finde = s === 0 || s === 6;
+        return `<th class="cal-dia ${finde ? 'finde' : ''} ${d === hoy() ? 'hoy' : ''}"><span>${DIAS_SEMANA[s]}</span>${Number(d.slice(8))}</th>`;
+      }).join('')}</tr></thead>
+      <tbody>${tecs.map(t => {
+        const suyas = deTec(t.id);
+        return `<tr><th class="cal-tec" scope="row">${esc(t.nombre)}${t.unidad ? `<small>${esc(t.unidad)}</small>` : ''}</th>${dias.map(d => {
+          const s = diaSemana(d), finde = s === 0 || s === 6;
+          const a = suyas.find(x => x.desde <= d && x.hasta >= d);
+          if (!a) return `<td class="cal-celda ${finde ? 'finde' : ''}" data-accion="nueva-en" data-tec="${esc(t.id)}" data-dia="${d}" title="Añadir ausencia a ${esc(t.nombre)} el ${fecha(d)}"></td>`;
+          return `<td class="cal-celda con ${finde ? 'finde' : ''}" style="--c:${colorDe(a.motivo)}" data-accion="editar" data-id="${esc(a.id)}"
+            title="${esc(a.motivo)} · ${fecha(a.desde)} a ${fecha(a.hasta)}${a.notas ? ' · ' + esc(a.notas) : ''}"></td>`;
+        }).join('')}</tr>`;
+      }).join('') || `<tr><td colspan="${n + 1}" class="vacio">No hay técnicos.</td></tr>`}</tbody>
+    </table></div>
+    <div class="leyenda">${(datos.motivos || []).map(m => `<span><i style="background:${colorDe(m)}"></i>${esc(m)}</span>`).join('')}
+      <span class="tenue">Pulsa un día vacío para añadir, o una ausencia para corregirla.</span></div>`;
+  }
+
+  function pintar(cargando = false) {
+    const cabecera = `<div class="barra">
+        <div><h1>Ausencias</h1><p class="tenue">Vacaciones, permisos y bajas. Los días laborables los calcula el servidor (de lunes a viernes, sin festivos) y los costes se recalculan solos.</p></div>
+        <span class="empuje"></span>
+        <label>Mes<input type="month" id="mes" value="${esc(mes)}" required></label>
+      </div>`;
+    if (cargando && !datos) { el.innerHTML = cabecera + '<p class="cargando">Cargando ausencias…</p>'; return; }
+    if (errorCarga && !datos) {
+      el.innerHTML = cabecera + cajaError(errorCarga, 'No se han podido cargar las ausencias') + '<button class="boton" data-accion="recargar">Reintentar</button>';
+      return;
+    }
+    if (!datos) return;
+    const lista = delMes();
+    const resumen = resumenAnual();
+
+    el.innerHTML = cabecera + `
+      ${errorCarga ? cajaError(errorCarga, 'No se ha podido actualizar') : ''}
+      <form class="bloque alta-ausencia" id="alta-ausencia" autocomplete="off">
+        <h2>Alta rápida</h2>
+        <div class="fila-campos">
+          <label>Técnico<select name="idTecnico" required><option value="">— Elige —</option>
+            ${(datos.tecnicos || []).map(t => `<option value="${esc(t.id)}">${esc(t.nombre)}</option>`).join('')}</select></label>
+          <label>Desde<input type="date" name="desde" required></label>
+          <label>Hasta (incluido)<input type="date" name="hasta" required></label>
+          <label>Motivo<select name="motivo" required><option value="">— Elige —</option>
+            ${(datos.motivos || []).map(m => `<option>${esc(m)}</option>`).join('')}</select></label>
+          <label class="ancho">Notas<input name="notas" maxlength="200" placeholder="Opcional"></label>
+          <button class="boton" type="submit" ${guardando ? 'disabled' : ''}>${guardando ? 'Guardando…' : 'Añadir'}</button>
+        </div>
+      </form>
+
+      <section class="bloque">
+        <div class="barra" style="align-items:end;margin-bottom:.75rem">
+          <h2 style="margin:0">${esc(nombreMes(mes))}</h2>
+          <span class="empuje"></span>
+          <label>Técnico<select id="filtro-tec"><option value="">Todos</option>
+            ${(datos.tecnicos || []).map(t => `<option value="${esc(t.id)}" ${t.id === filtroTec ? 'selected' : ''}>${esc(t.nombre)}</option>`).join('')}</select></label>
+          <label>Motivo<select id="filtro-motivo"><option value="">Todos</option>
+            ${(datos.motivos || []).map(m => `<option ${m === filtroMotivo ? 'selected' : ''}>${esc(m)}</option>`).join('')}</select></label>
+        </div>
+        ${calendario()}
+      </section>
+
+      <section class="bloque">
+        <h2>Ausencias de ${esc(nombreMes(mes))}</h2>
+        <div class="tabla-scroll"><table>
+          <thead><tr><th>Técnico</th><th>Equipo</th><th>Motivo</th><th>Desde</th><th>Hasta</th><th class="num">Días laborables</th><th>Notas</th><th></th></tr></thead>
+          <tbody>${lista.map(a => `<tr>
+            <td><strong>${esc(a.tecnico || nombreTec(a.idTecnico))}</strong></td><td>${esc(a.equipo || '—')}</td>
+            <td><span class="insignia motivo" style="--c:${colorDe(a.motivo)}">${esc(a.motivo)}</span></td>
+            <td>${fecha(a.desde)}</td><td>${fecha(a.hasta)}</td><td class="num">${esc(a.diasLaborables ?? '—')}</td>
+            <td class="tenue">${esc(a.notas || '')}</td>
+            <td class="num"><div class="botones-tipo" style="justify-content:flex-end">
+              <button class="boton secundario mini" data-accion="editar" data-id="${esc(a.id)}">Corregir</button>
+              <button class="boton peligro mini" data-accion="borrar" data-id="${esc(a.id)}">Borrar</button></div></td>
+          </tr>`).join('') || '<tr><td colspan="8" class="vacio">No hay ausencias este mes con estos filtros.</td></tr>'}</tbody>
+        </table></div>
+      </section>
+
+      <section class="bloque">
+        <h2>Resumen de ${esc(anio)}</h2>
+        <p class="tenue">Días laborables por técnico. Vacaciones: ${VACACIONES_ANUALES} al año según convenio. Una ausencia cuenta en el año en que empieza.</p>
+        <div class="tabla-scroll"><table>
+          <thead><tr><th>Técnico</th><th class="num">Vacaciones disfrutadas</th><th class="num">Le quedan</th><th>Otras ausencias</th></tr></thead>
+          <tbody>${tecnicos().map(t => {
+            const r = resumen.get(t.id) || { vacaciones: 0, otros: new Map() };
+            const quedan = VACACIONES_ANUALES - r.vacaciones;
+            return `<tr><td><strong>${esc(t.nombre)}</strong></td>
+              <td class="num">${r.vacaciones}</td>
+              <td class="num"><span class="insignia ${quedan < 0 ? 'error' : quedan <= 5 ? 'aviso' : 'ok'}">${quedan}</span></td>
+              <td>${[...r.otros].map(([m, n]) => `<span class="insignia">${esc(m)}: ${n}</span>`).join(' ') || '<span class="tenue">—</span>'}</td></tr>`;
+          }).join('')}</tbody>
+        </table></div>
+      </section>`;
+  }
+
+  // ── Eventos ──
+  function alCambiar(ev) {
+    const t = ev.target;
+    if (t.id === 'mes' && t.value) {
+      mes = t.value;
+      if (mes.slice(0, 4) !== anio) { anio = mes.slice(0, 4); datos = null; recargar(); } else pintar();
+    }
+    if (t.id === 'filtro-tec') { filtroTec = t.value; pintar(); }
+    if (t.id === 'filtro-motivo') { filtroMotivo = t.value; pintar(); }
+  }
+  function alPulsar(ev) {
+    const b = ev.target.closest('[data-accion]');
+    if (!b) return;
+    const a = b.dataset.accion;
+    const buscar = () => datos.ausencias.find(x => x.id === b.dataset.id);
+    if (a === 'recargar') recargar();
+    if (a === 'editar' && buscar()) editar(buscar());
+    if (a === 'borrar' && buscar()) borrar(buscar());
+    if (a === 'nueva-en') editar({ idTecnico: b.dataset.tec, desde: b.dataset.dia, hasta: b.dataset.dia });
+  }
+  function alEnviar(ev) {
+    if (ev.target.id !== 'alta-ausencia') return;
+    ev.preventDefault();
+    altaRapida(ev.target);
+  }
+  const eventos = { change: alCambiar, click: alPulsar, submit: alEnviar };
+  Object.entries(eventos).forEach(([k, fn]) => el.addEventListener(k, fn));
+  recargar();
+
+  return {
+    recargar,
+    desmontar: () => Object.entries(eventos).forEach(([k, fn]) => el.removeEventListener(k, fn)),
+  };
+}

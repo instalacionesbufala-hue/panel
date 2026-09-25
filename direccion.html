@@ -4,25 +4,19 @@
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <meta name="robots" content="noindex, nofollow">
-  <title>Panel Búfala Tech</title>
+  <title>Indicadores de Operaciones · Búfala Tech</title>
   <link rel="icon" type="image/png" href="img/favicon.png">
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
   <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Manrope:wght@400;500;600;700;800&family=Sora:wght@400;500;600&family=JetBrains+Mono:wght@500;700&display=swap">
   <link rel="stylesheet" href="css/panel.css?v=19">
-  <script type="module" src="js/app.js?v=19"></script>
+  <script type="module" src="js/direccion.js?v=19"></script>
 </head>
-<body>
+<body class="pagina-direccion">
+  <!-- Página de la Dirección General: solo lectura, con su propio acceso. No enlaza con el panel. -->
   <header class="cabecera">
-    <div class="marca"><img src="img/logo.png" alt="" width="40" height="40">Búfala Tech <span>· Panel de administración</span></div>
-    <nav class="menu" id="menu" aria-label="Secciones">
-      <a href="#unidades" data-vista="unidades">Unidades</a>
-      <a href="#combustible" data-vista="combustible">Combustible</a>
-      <a href="#costes" data-vista="costes">Costes de personal</a>
-      <a href="#ausencias" data-vista="ausencias">Ausencias</a>
-      <a href="#maestros" data-vista="maestros">Técnicos y vehículos</a>
-      <a href="#liquidacion" data-vista="liquidacion">Liquidación</a>
-    </nav>
+    <div class="marca"><img src="img/logo.png" alt="" width="40" height="40">Búfala Tech <span>· Indicadores de Operaciones</span></div>
+    <span class="empuje-cabecera"></span>
     <button type="button" class="boton secundario" id="salir" hidden>Cerrar sesión</button>
   </header>
 
@@ -35,12 +29,11 @@
 
   <div id="avisos" class="avisos" aria-live="polite"></div>
 
-  <!-- Pantalla de acceso: es una capa encima de la vista, así no se pierde lo que haya a medias -->
   <div id="acceso" class="acceso" hidden>
     <form id="form-acceso" class="tarjeta acceso-caja" autocomplete="off">
       <img class="acceso-logo" src="img/logo.png" alt="Búfala Tech" width="96" height="96">
-      <h1>Acceso al panel</h1>
-      <p id="acceso-motivo" class="tenue">Introduce la contraseña del panel.</p>
+      <h1>Dirección General</h1>
+      <p id="acceso-motivo" class="tenue">Introduce la contraseña de la Dirección.</p>
       <label>Contraseña
         <input type="password" id="clave" required autocomplete="current-password">
       </label>
@@ -49,6 +42,7 @@
     </form>
   </div>
 
+  <!-- ui.js lo necesita para las confirmaciones; aquí no se usa para escribir nada -->
   <dialog id="dialogo" class="dialogo">
     <form method="dialog">
       <h2 id="dialogo-titulo"></h2>

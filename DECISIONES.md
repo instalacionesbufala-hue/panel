@@ -1,6 +1,26 @@
 # Decisiones del panel y dudas para el backend
 
-**El contrato vive en [`BACKEND.md`](BACKEND.md)**, lo mantiene el backend y manda sobre este fichero. Aquí queda lo que decide el panel por su cuenta y lo que el panel pregunta. Revisado contra BACKEND.md **v3.20.28** el 25/09/2026.
+**El contrato vive en [`BACKEND.md`](BACKEND.md)**, lo mantiene el backend y manda sobre este fichero. Aquí queda lo que decide el panel por su cuenta y lo que el panel pregunta. Revisado contra BACKEND.md **v3.20.28** (encargos del 26/09/2026) el 26/09/2026.
+
+## Pantalla «Ausencias» — hecha en modo demostración (encargo del 26/09/2026)
+
+Nueva pestaña «Ausencias» (`js/ausencias.js`). Irá sola a producción cuando el ping anuncie `panelAusencias`, `panelGuardarAusencia` y `panelBorrarAusencia`. Las dos escrituras van emparejadas con `panelAusencias`.
+- Se lee el **año entero** (`desde = AAAA-01-01`, `hasta = AAAA-12-31`) y el mes se filtra en el navegador; al cambiar de año se vuelve a leer.
+- **Alta rápida** arriba (técnico, desde, hasta, motivo, notas). Si el backend rechaza, por ejemplo por un **solape**, se enseña su `error` y se conserva lo escrito.
+- **Calendario del mes**: una fila por técnico y una columna por día, con fines de semana sombreados y un color por motivo. Pulsar un día vacío abre el alta con ese técnico y ese día; pulsar una ausencia abre su corrección.
+- **Lista del mes** con Corregir y Borrar (borrar pide confirmación). Filtros de técnico y motivo.
+- **Resumen del año**: días laborables de vacaciones disfrutados y cuántos quedan de 22, y el resto de motivos. Una ausencia cuenta en el año en que empieza.
+- Los días laborables y el `equipo` los pone el backend; el panel no los calcula (la demostración sí, de lunes a viernes con una lista de festivos de ejemplo).
+
+## Página de la Dirección General — hecha en modo demostración (encargo del 26/09/2026)
+
+`direccion.html` + `js/direccion.js`, con el mismo estilo que el panel. Página aparte, **solo lectura** y **sin enlaces al panel**.
+- **Acceso propio.** Su testigo se guarda aparte (`bufala-direccion-testigo`) y solo se usa en las acciones `direccion*`. Además, `api.peticionDireccion` rechaza cualquier otra acción. Mientras el ping no anuncie `direccionLogin`, no se pide contraseña y la página enseña **datos de ejemplo** con una franja que lo dice.
+- Usa la misma cola, el mismo reintento y el mismo `ping` que el panel. Las acciones `direccion*` no cuentan para la franja de «Modo demostración» del panel.
+- **Secciones:** Semanal (con la tabla por equipo), Mensual, Trimestral, Por incorporación e Informe Semanal, cada una con su periodicidad bien visible y su selector (semana, mes o trimestre). Cada indicador es una tarjeta con valor, unidad, nota, «Fórmula» plegable y la marca «dato manual» cuando corresponde.
+- **Periodos por defecto:** la última semana completa, el último mes cerrado y el último trimestre cerrado. La semana se envía como `AAAA-Snn` (el selector del navegador da `AAAA-Wnn` y se convierte).
+- **Informe Semanal:** «Ver informe» pide `direccionInforme`, enseña el `.md` y permite descargar `.md` y `.csv` con el nombre `BUFALA_Informe_Operaciones_AAAA-Snn` (el `.csv` lleva BOM para que Excel lea bien los acentos).
+- **Valores:** los porcentajes que lleguen como fracción (0,82) se enseñan como 82 %.
 
 ## Reintento, aviso tras guardar y equipos en cualquier compra — hecho (v3.20.28)
 
@@ -70,7 +90,12 @@ Además, el panel guarda en memoria una copia de `panelConfig` durante 10 minuto
 
 ## Dudas abiertas para el backend
 
-Ninguna por ahora. Pendiente del backend: altas y bajas de técnicos, vehículos y unidades dentro de `panelGuardarConfig`, y `panelLiquidacion`.
+1. **`accion` en las respuestas de ausencias.** La tabla da `panelGuardarAusencia → { ok, ausencia, avisos }` y `panelBorrarAusencia → { ok }`, sin `accion`. El panel exige `accion` en toda escritura; ¿la repiten, como `panelClasificarFactura`?
+2. **`direccion*` en el ping.** El panel supone que `direccionLogin`, `direccionIndicadores` y `direccionInforme` aparecerán en `accionesPanel` del mismo `ping`. ¿Es así, o irán en otra lista?
+3. **Sesión caducada en la Dirección.** Se supone la misma respuesta que en el panel (`{ ok:false, codigo:"sesion" }`); entonces la página pide de nuevo la contraseña.
+4. **`periodicidad` y `unidad` de los indicadores.** El panel enseña `periodicidad` tal cual llega y trata `unidad: "%"` con valores entre −1,5 y 1,5 como fracción. Si los porcentajes van a llegar ya multiplicados por 100, basta con decirlo.
+
+Pendiente del backend: altas y bajas de técnicos, vehículos y unidades dentro de `panelGuardarConfig`, y `panelLiquidacion`.
 
 ## Resueltas por BACKEND.md (23/09/2026, tarde) — hecho
 

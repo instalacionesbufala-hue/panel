@@ -5,7 +5,10 @@ export const URL_BACKEND = 'https://script.google.com/macros/s/AKfycbxMMeyP9g75p
 
 // Acciones del panel que conoce esta interfaz.
 export const TODAS = ['panelLogin', 'panelConfig', 'panelCompras', 'panelLiquidacion', 'panelCostes', 'panelGuardarConfig',
-  'panelAsignarCombustible', 'panelClasificarProveedor', 'panelCostesTecnico', 'panelFacturaDetalle', 'panelClasificarFactura'];
+  'panelAsignarCombustible', 'panelClasificarProveedor', 'panelCostesTecnico', 'panelFacturaDetalle', 'panelClasificarFactura',
+  'panelAusencias', 'panelGuardarAusencia', 'panelBorrarAusencia'];
+// Acciones de la página de la Dirección General (direccion.html): testigo propio, solo lectura.
+export const TODAS_DIRECCION = ['direccionLogin', 'direccionIndicadores', 'direccionInforme'];
 
 // Qué acciones van a producción lo dice el backend: GET ?action=ping devuelve
 // { panel: true, accionesPanel: [...] }. Las que figuren ahí van a producción; el resto se
@@ -16,7 +19,7 @@ let esperaAcciones = null;
 export function accionesEnProduccion() {
   if (!esperaAcciones) {
     esperaAcciones = aProduccion('ping', { conTestigo: false })
-      .then(r => new Set(r.panel === true && Array.isArray(r.accionesPanel) ? r.accionesPanel.filter(a => TODAS.includes(a)) : []))
+      .then(r => new Set(r.panel === true && Array.isArray(r.accionesPanel) ? r.accionesPanel.filter(a => TODAS.includes(a) || TODAS_DIRECCION.includes(a)) : []))
       .catch(e => { esperaAcciones = null; throw e; });
   }
   return esperaAcciones;
@@ -119,9 +122,10 @@ async function conReintento(accion, opciones) {
   }
 }
 
-async function enviarAProduccion(accion, { metodo = 'GET', params = {}, cuerpo = null, conTestigo = true } = {}) {
+async function enviarAProduccion(accion, { metodo = 'GET', params = {}, cuerpo = null, conTestigo = true, testigoExplicito = null } = {}) {
   const url = new URL(URL_BACKEND);
-  const token = conTestigo ? testigoActual() : null;
+  // testigoExplicito: el de la Dirección, que no se mezcla con la sesión del panel
+  const token = testigoExplicito || (conTestigo ? testigoActual() : null);
   const opciones = { method: metodo, redirect: 'follow' };
 
   if (metodo === 'GET') {
@@ -180,7 +184,7 @@ async function enviarAProduccion(accion, { metodo = 'GET', params = {}, cuerpo =
   }
   if (!datos || datos.ok !== true) throw new ErrorApi(`Respuesta inesperada del servidor en «${accion}».`, 'contrato');
   // En las escrituras (salvo el acceso, que se valida por el testigo) el backend debe repetir la acción
-  if (metodo !== 'GET' && accion !== 'panelLogin' && datos.accion !== accion) {
+  if (metodo !== 'GET' && accion !== 'panelLogin' && accion !== 'direccionLogin' && datos.accion !== accion) {
     throw new ErrorApi(`El servidor ha respondido a «${accion}» sin confirmarla. No se da por guardado.`, 'contrato');
   }
   // Los guardados contestan enseguida y dejan el recálculo de costes en cola (1-2 minutos)
@@ -197,6 +201,8 @@ const LECTURA_DE = {
   panelClasificarProveedor: 'panelCompras',
   panelClasificarFactura: 'panelCompras',
   panelCostesTecnico: 'panelCostes',
+  panelGuardarAusencia: 'panelAusencias',
+  panelBorrarAusencia: 'panelAusencias',
 };
 
 // Cuando Apps Script falla, Google devuelve una página HTML. Se extrae su mensaje para mostrarlo.
@@ -277,6 +283,19 @@ export const guardarConfig = async cambios => {
 };
 export const asignarCombustible = asignaciones => llamar('panelAsignarCombustible', { metodo: 'POST', cuerpo: { asignaciones } });
 export const clasificarProveedor = (proveedor, tipo) => llamar('panelClasificarProveedor', { metodo: 'POST', cuerpo: { proveedor, tipo } });
+// Ausencias (BACKEND.md, encargo del 26/09/2026). Sin id = alta; con id = edición.
+export const leerAusencias = (desde, hasta) => llamar('panelAusencias', { params: { desde, hasta } });
+export const guardarAusencia = a => llamar('panelGuardarAusencia', { metodo: 'POST', cuerpo: a });
+export const borrarAusencia = id => llamar('panelBorrarAusencia', { metodo: 'POST', cuerpo: { id } });
+
+// Dirección General: va a producción solo si el ping la anuncia; su testigo lo guarda direccion.js.
+// Usa la misma cola y el mismo reintento que el panel. Nunca se simula aquí: la demostración la pone direccion.js.
+export async function peticionDireccion(accion, { metodo = 'GET', params = {}, cuerpo = null, testigo = null } = {}) {
+  if (!TODAS_DIRECCION.includes(accion)) throw new ErrorApi(`Acción desconocida: ${accion}`, 'contrato');
+  if (!(await accionesEnProduccion()).has(accion)) throw new ErrorApi('Esta parte todavía no está activada en el servidor.', 'no-disponible');
+  return enCola(() => conReintento(accion, { metodo, params, cuerpo, conTestigo: false, testigoExplicito: testigo }));
+}
+
 // Vista previa de una factura o línea (PDF en base64 o, si no hay, sus líneas)
 export const leerFacturaDetalle = id => llamar('panelFacturaDetalle', { params: { id } });
 // Clasificación de una sola factura; con tipo «materialUso», equipos entre los que se reparte a partes iguales
@@ -374,9 +393,32 @@ function crearDemo() {
     // Costes de empresa ya volcados por la gestoría, por mes: idTec → importe
     costes: { [P]: { T01: 2579.29, T02: 2310.4, T03: 2598.75, T06: 2490.1 } },
     excepciones: { [M]: [{ tipo: 'obra sin ejecutantes', detalle: 'E2631532 · 619,05 €' }] },
+    motivos: ['Vacaciones', 'Asuntos propios', 'Permiso retribuido', 'Baja', 'Formación', 'Otros'],
+    ausencias: [
+      { id: 'AU1', idTecnico: 'T01', desde: `${A}-08-03`, hasta: `${A}-08-14`, motivo: 'Vacaciones', notas: '' },
+      { id: 'AU2', idTecnico: 'T02', desde: `${M}-07`, hasta: `${M}-11`, motivo: 'Vacaciones', notas: '' },
+      { id: 'AU3', idTecnico: 'T03', desde: `${M}-16`, hasta: `${M}-16`, motivo: 'Asuntos propios', notas: '' },
+      { id: 'AU4', idTecnico: 'T05', desde: `${M}-21`, hasta: `${M}-23`, motivo: 'Formación', notas: 'Curso de recarga VE' },
+      { id: 'AU5', idTecnico: 'T02', desde: `${A}-07-20`, hasta: `${A}-07-31`, motivo: 'Vacaciones', notas: '' },
+    ],
   };
 }
 let demo = null;
+
+// Días laborables como el backend: de lunes a viernes, sin festivos (lista de ejemplo de la demostración)
+const FESTIVOS_DEMO = ['01-01', '01-06', '05-01', '08-15', '10-12', '11-01', '12-06', '12-08', '12-25'];
+function demoDiasLaborables(desde, hasta) {
+  let n = 0;
+  for (let d = new Date(desde + 'T12:00'); d <= new Date(hasta + 'T12:00'); d.setDate(d.getDate() + 1)) {
+    const dia = d.getDay(), md = d.toISOString().slice(5, 10);
+    if (dia !== 0 && dia !== 6 && !FESTIVOS_DEMO.includes(md)) n++;
+  }
+  return n;
+}
+function demoAusencia(a) {
+  const t = demo.tecnicos.find(x => x.id === a.idTecnico);
+  return { ...a, tecnico: t?.nombre || a.idTecnico, equipo: demoUnidadDe(a.idTecnico, a.desde) || '', diasLaborables: demoDiasLaborables(a.desde, a.hasta) };
+}
 
 // Como el backend: facturas de combustible o vehículo sin matrícula ni ESTRUCTURA, desde mayo de 2026
 function demoPendientes() {
@@ -435,6 +477,25 @@ function demoResponder(accion, params, p) {
         tiposFactura: [...demo.tiposProveedor.filter(t => t.valor !== 'mixto'), { valor: 'materialUso', etiqueta: 'Material de uso (se reparte entre equipos)' }],
         equiposDisponibles: demo.unidades.filter(u => u.tipo !== 'no_productiva' && u.activa !== false).map(u => u.id),
         tiposConEquipos: ['herramienta', 'material', 'materialUso'] };
+    case 'panelAusencias': {
+      const lista = demo.ausencias.filter(a => (!params.hasta || a.desde <= params.hasta) && (!params.desde || a.hasta >= params.desde));
+      return { ok: true, ausencias: lista.map(demoAusencia),
+        tecnicos: demo.tecnicos.filter(t => !t.baja || t.baja >= hoyIso()).map(t => ({ id: t.id, nombre: t.nombre, unidad: demoUnidadDe(t.id, hoyIso()) || '' })),
+        motivos: demo.motivos };
+    }
+    case 'panelGuardarAusencia': {
+      if (!p.idTecnico || !p.desde || !p.hasta || !p.motivo) return { ok: false, error: 'Faltan datos: técnico, desde, hasta y motivo.' };
+      if (p.hasta < p.desde) return { ok: false, error: 'La fecha «hasta» no puede ser anterior a «desde».' };
+      const choque = demo.ausencias.find(a => a.id !== p.id && a.idTecnico === p.idTecnico && a.desde <= p.hasta && a.hasta >= p.desde);
+      if (choque) return { ok: false, error: `Se solapa con otra ausencia del mismo técnico: ${choque.motivo} del ${choque.desde} al ${choque.hasta}.` };
+      const a = { id: p.id || 'AU' + (Math.max(0, ...demo.ausencias.map(x => Number(x.id.slice(2)) || 0)) + 1), idTecnico: p.idTecnico, desde: p.desde, hasta: p.hasta, motivo: p.motivo, notas: p.notas || '' };
+      const i = demo.ausencias.findIndex(x => x.id === a.id);
+      if (i >= 0) demo.ausencias[i] = a; else demo.ausencias.push(a);
+      return { ok: true, accion, ausencia: demoAusencia(a), avisos: [] };
+    }
+    case 'panelBorrarAusencia':
+      demo.ausencias = demo.ausencias.filter(a => a.id !== p.id);
+      return { ok: true, accion };
     case 'panelFacturaDetalle': {
       const f = Object.values(demo.facturas).flat().concat(Object.values(demo.sinClasificar).flat()).find(x => x.id === params.id);
       if (!f) return { ok: false, error: 'No existe esa factura.' };

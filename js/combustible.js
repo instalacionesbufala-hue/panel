@@ -1,7 +1,7 @@
 // Pantalla de combustible: asignar cada gasto de vehículo (combustible, renting, mantenimiento) a su matrícula.
-import * as api from './api.js?v=16';
-import { esc, eur, fecha, mesActual, sumarMeses, nombreMes, avisar, cajaError, selectorMes } from './ui.js?v=16';
-import { abrirVisor, valorTipo, etiquetaTipo } from './visor.js?v=16';
+import * as api from './api.js?v=17';
+import { esc, eur, fecha, mesActual, sumarMeses, nombreMes, avisar, cajaError, selectorMes } from './ui.js?v=17';
+import { abrirVisor, valorTipo, etiquetaTipo, tiposConEquipos, textoReparto } from './visor.js?v=17';
 
 const SIN = '';
 // Gasto imputado a Estructura sin vehículo concreto (BACKEND.md v3.20.24): cuenta como asignado
@@ -141,6 +141,11 @@ export function montar(el) {
     const matriculas = [...new Set([...vehs.map(v => v.matricula), ...[...tot.keys()].filter(k => k && k !== ESTRUCTURA)]), ESTRUCTURA];
 
     const tipos = (compras.tiposProveedor || []).filter(t => valorTipo(t) !== 'sinClasificar');
+    // Compras de material y herramienta del mes: cada una con sus equipos y el reparto
+    const tiposEq = tiposConEquipos(compras);
+    const deEquipos = (compras.facturas || []).filter(f => tiposEq.includes(f.tipo)).sort((a, b) => String(a.fecha).localeCompare(b.fecha));
+    const etiqueta = v => { const t = [...(compras.tiposFactura || []), ...(compras.tiposProveedor || [])].find(x => valorTipo(x) === v); return t ? etiquetaTipo(t) : v; };
+    const destinoSinEquipos = f => f.tipo === 'herramienta' ? 'Estructura' : f.tipo === 'material' ? 'material de cierres (no suma)' : 'falta elegir equipos';
     // Sin clasificar: agrupadas por proveedor, pero cada factura se clasifica por separado
     const porProveedor = new Map();
     for (const f of compras.sinClasificar || []) {
@@ -188,6 +193,22 @@ export function montar(el) {
           <tbody>${[...sinAsignar, ...asignadas].map(f => filaFactura(f, vehs)).join('') || '<tr><td colspan="6" class="vacio">No hay gastos de vehículo este mes.</td></tr>'}</tbody>
         </table></div>
       </section>
+
+      ${deEquipos.length ? `<section class="bloque">
+        <h2>Material y herramienta · ${esc(nombreMes(mes))}</h2>
+        <p class="tenue">Compras que pueden cargarse a los equipos, a partes iguales en el mes de la factura. Ábrelas para cambiar el tipo o los equipos.</p>
+        <div class="tabla-scroll"><table>
+          <thead><tr><th>Fecha</th><th>Proveedor</th><th>Tipo</th><th class="num">Importe sin IVA</th><th>Equipos</th><th></th></tr></thead>
+          <tbody>${deEquipos.map(f => `<tr>
+            <td>${fecha(f.fecha)}</td><td>${esc(f.proveedor)}${f.numero ? ` <span class="tenue">${esc(f.numero)}</span>` : ''}</td>
+            <td><span class="insignia">${esc(etiqueta(f.tipo))}</span>${f.manual ? ' <span class="insignia ok" title="Clasificada a mano: la sincronización nocturna no la cambia">a mano</span>' : ''}</td>
+            <td class="num">${eur(f.importeSinIva)}</td>
+            <td>${f.equipos?.length
+              ? `${f.equipos.map(e => `<span class="insignia">${esc(e)}</span>`).join(' ')} <span class="tenue">${esc(textoReparto(f.importeSinIva, f.equipos))}</span>`
+              : `<span class="tenue">${esc(destinoSinEquipos(f))}</span>`}</td>
+            <td class="num"><button class="boton secundario mini" data-accion="ver" data-id="${esc(f.id)}">Ver y cambiar</button></td></tr>`).join('')}</tbody>
+        </table></div>
+      </section>` : ''}
 
       ${porProveedor.size ? `<section class="bloque">
         <h2>Facturas sin clasificar</h2>

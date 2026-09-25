@@ -1,6 +1,18 @@
 # Decisiones del panel y dudas para el backend
 
-**El contrato vive en [`BACKEND.md`](BACKEND.md)**, lo mantiene el backend y manda sobre este fichero. Aquí queda lo que decide el panel por su cuenta y lo que el panel pregunta. Revisado contra BACKEND.md **v3.20.27** el 25/09/2026.
+**El contrato vive en [`BACKEND.md`](BACKEND.md)**, lo mantiene el backend y manda sobre este fichero. Aquí queda lo que decide el panel por su cuenta y lo que el panel pregunta. Revisado contra BACKEND.md **v3.20.28** el 25/09/2026.
+
+## Reintento, aviso tras guardar y equipos en cualquier compra — hecho (v3.20.28)
+
+- **Reintento automático** (`js/api.js`). Si Google devuelve su página de error, no contesta, o tarda más de 30 s (antes se esperaban 60), la petición se repite **una sola vez** a los 4 s, con el aviso «Reintentando…». Si falla también el segundo intento, sale el error de siempre y la franja de conexión. Un «no» del backend (`ok:false`) nunca se repite. Va dentro de la cola, así que no se adelanta a otras peticiones.
+  - También se reintenta el «fallo de red»: la página de error de Google no trae cabeceras CORS y el navegador la ve así (es lo que pasó el 23/09).
+- **Tras guardar**, si la respuesta trae `costesEnCola: true`, aviso discreto «Guardado. Los costes se actualizan en 1-2 minutos». Uno solo aunque se guarde varias veces en 20 s.
+- **Equipos en material y herramienta.** En el visor, los tipos de `tiposConEquipos` muestran las casillas de `equiposDisponibles`:
+  - `materialUso`: obligatorias, todas marcadas al elegirlo;
+  - `herramienta` y `material`: opcionales, sin marcar al elegirlo, con la explicación de qué pasa sin equipos (herramienta → Estructura; material → no suma, es el de los cierres);
+  - si la factura ya tenía equipos para ese tipo, se parte de ellos. Se envía siempre `equipos` (vacío en los opcionales) con esos tipos; para cambiar solo los equipos se reenvía el mismo `tipo`.
+- **Nueva lista «Material y herramienta» del mes** en Combustible: cada compra de `tiposConEquipos` con su tipo, «a mano» si `manual`, sus equipos y el reparto («150,00 € a cada uno»), o adónde va sin equipos. Botón «Ver y cambiar».
+- Comprobado con el simulador local: reintento que sale bien al segundo intento (dos peticiones, ninguna franja de error), reintento que falla dos veces (dos peticiones y el error), herramienta sin equipos, material con dos equipos y el aviso de costes en cola.
 
 ## Clasificar factura a factura, con vista previa — hecho (v3.20.27)
 
@@ -13,7 +25,7 @@
 - Tras cada clasificación se vuelve a leer `panelCompras`, así que el aviso y el contador se refrescan.
 - Comprobado con el simulador local (en la demostración no hay PDF, así que se probó la vista de líneas): una factura suelta como material de uso entre dos equipos, el proveedor entero como herramienta y reabrir una factura ya clasificada.
 
-**Duda para el backend:** la tabla de BACKEND.md da como respuesta de `panelClasificarFactura` `{ ok, id, tipo, equipos, avisos }`, sin `accion`. El panel exige `accion` en toda escritura (regla general del contrato) y, si no llega, dice «no se da por guardado». ¿Lo repite, como las demás?
+**Resuelta:** la respuesta de `panelClasificarFactura` siempre trae `accion: "panelClasificarFactura"` (confirmado por el backend el 25/09/2026), así que la comprobación general de `accion` vale también aquí.
 
 ## Aviso de facturas pendientes — hecho (Panel_Compras v1.13)
 
@@ -58,9 +70,7 @@ Además, el panel guarda en memoria una copia de `panelConfig` durante 10 minuto
 
 ## Dudas abiertas para el backend
 
-1. **`panelClasificarFactura` y `accion`:** ¿la respuesta repite `accion`? Detalle en «Clasificar factura a factura».
-
-Pendiente también del backend: altas y bajas de técnicos, vehículos y unidades dentro de `panelGuardarConfig`, y `panelLiquidacion`.
+Ninguna por ahora. Pendiente del backend: altas y bajas de técnicos, vehículos y unidades dentro de `panelGuardarConfig`, y `panelLiquidacion`.
 
 ## Resueltas por BACKEND.md (23/09/2026, tarde) — hecho
 

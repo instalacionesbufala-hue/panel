@@ -1,11 +1,25 @@
 // Visor de factura: vista previa (PDF o líneas) y clasificación factura a factura (BACKEND.md v3.20.27).
-import * as api from './api.js?v=16';
-import { esc, eur, fecha, avisar, cajaError, listaAvisos } from './ui.js?v=16';
+import * as api from './api.js?v=17';
+import { esc, eur, fecha, avisar, cajaError, listaAvisos } from './ui.js?v=17';
 
 // Los tipos llegan como texto u objeto { valor, etiqueta }
 export const valorTipo = t => typeof t === 'string' ? t : (t.valor ?? t.id);
 export const etiquetaTipo = t => typeof t === 'string' ? t.charAt(0).toUpperCase() + t.slice(1) : (t.etiqueta ?? t.nombre ?? valorTipo(t));
 const MATERIAL_USO = 'materialUso';
+// Tipos que admiten equipos (panelCompras.tiposConEquipos). Obligatorios solo en «materialUso».
+const tiposConEquipos = compras => compras.tiposConEquipos?.length ? compras.tiposConEquipos : [MATERIAL_USO];
+// Qué pasa si no se marca ningún equipo (BACKEND.md v3.20.28)
+const SIN_EQUIPOS = {
+  herramienta: 'Sin equipos marcados, la herramienta va a Estructura.',
+  material: 'Sin equipos marcados, no suma a ningún equipo: es el material de los cierres (Saltoki).',
+};
+// «20,00 € a cada uno», para la lista y el visor
+export function textoReparto(importe, equipos) {
+  if (!equipos?.length) return '';
+  const cada = Math.round(Number(importe || 0) / equipos.length * 100) / 100;
+  return equipos.length === 1 ? `todo a ${equipos[0]}` : `${eur(cada)} a cada uno`;
+}
+export { tiposConEquipos };
 
 // tiposFactura manda el backend; si no llegara, los de proveedor sin «mixto»
 const tiposDeFactura = compras => (compras.tiposFactura?.length ? compras.tiposFactura
@@ -38,7 +52,10 @@ export function abrirVisor({ resumen, compras }) {
   const tipos = tiposDeFactura(compras);
   const equiposDisponibles = compras.equiposDisponibles || [];
   let tipo = resumen.tipo && tipos.some(t => valorTipo(t) === resumen.tipo) ? resumen.tipo : '';
-  let equipos = new Set(resumen.tipo === MATERIAL_USO && resumen.equipos?.length ? resumen.equipos : equiposDisponibles);
+  const conEquipos = tiposConEquipos(compras);
+  // Equipos iniciales: los que ya tenga la factura; si no, todos en «materialUso» (obligatorios) y ninguno en los opcionales
+  const equiposIniciales = t => resumen.tipo === t && resumen.equipos?.length ? resumen.equipos : (t === MATERIAL_USO ? equiposDisponibles : []);
+  let equipos = new Set(equiposIniciales(tipo));
   let urlPdf = null, guardando = false, error = null, guardado = false;
   // Se termina a mano (botones, guardado) o con Escape (evento close); lo que llegue primero y una sola vez.
   // No se espera solo al evento close: puede retrasarse si la página no se está dibujando.
@@ -72,12 +89,12 @@ export function abrirVisor({ resumen, compras }) {
         ${tipos.map(t => `<label class="opcion-tipo"><input type="radio" name="visor-tipo" value="${esc(valorTipo(t))}" ${valorTipo(t) === tipo ? 'checked' : ''}> ${esc(etiquetaTipo(t))}</label>`).join('')
           || '<p class="tenue">El servidor no ha enviado los tipos de factura.</p>'}
       </fieldset>
-      ${tipo === MATERIAL_USO ? `<fieldset class="visor-equipos"><legend>Repartir entre</legend>
+      ${conEquipos.includes(tipo) ? `<fieldset class="visor-equipos"><legend>${tipo === MATERIAL_USO ? 'Repartir entre' : 'Cargar a los equipos (opcional)'}</legend>
           ${equiposDisponibles.map(e => `<label class="en-linea"><input type="checkbox" name="visor-equipo" value="${esc(e)}" ${equipos.has(e) ? 'checked' : ''}> ${esc(e)}</label>`).join('')
             || '<p class="tenue">El servidor no ha enviado los equipos.</p>'}
-          <p class="${equipos.size ? 'tenue' : 'error'}" id="visor-reparto">${equipos.size
-            ? `${eur(reparto())} a cada uno (${equipos.size} equipo${equipos.size === 1 ? '' : 's'}, a partes iguales).`
-            : 'Marca al menos un equipo.'}</p>
+          <p class="${equipos.size || tipo !== MATERIAL_USO ? 'tenue' : 'error'}" id="visor-reparto">${equipos.size
+            ? `${eur(reparto())} a cada uno (${equipos.size} equipo${equipos.size === 1 ? '' : 's'}, a partes iguales, en el mes de la factura).`
+            : tipo === MATERIAL_USO ? 'Marca al menos un equipo.' : esc(SIN_EQUIPOS[tipo] || 'Sin equipos marcados, no se carga a ningún equipo.')}</p>
         </fieldset>` : ''}
       ${error ? cajaError(error, 'No se ha guardado') : ''}
       <div class="acciones">
@@ -132,7 +149,8 @@ export function abrirVisor({ resumen, compras }) {
   async function guardar() {
     guardando = true; error = null; pintarLado();
     try {
-      const r = await api.clasificarFactura(resumen.id, tipo, tipo === MATERIAL_USO ? [...equipos] : null);
+      // En los tipos con equipos se envía siempre la lista (vacía en los opcionales = ningún equipo)
+      const r = await api.clasificarFactura(resumen.id, tipo, conEquipos.includes(tipo) ? [...equipos] : null);
       listaAvisos(r.avisos, 15000);
       const t = tipos.find(x => valorTipo(x) === tipo);
       avisar(`Factura clasificada como «${t ? etiquetaTipo(t) : tipo}».`);
@@ -147,7 +165,7 @@ export function abrirVisor({ resumen, compras }) {
   }
 
   function alCambiar(ev) {
-      if (ev.target.name === 'visor-tipo') { tipo = ev.target.value; error = null; pintarLado(); }
+      if (ev.target.name === 'visor-tipo') { tipo = ev.target.value; equipos = new Set(equiposIniciales(tipo)); error = null; pintarLado(); }
       if (ev.target.name === 'visor-equipo') {
         ev.target.checked ? equipos.add(ev.target.value) : equipos.delete(ev.target.value);
         pintarLado();

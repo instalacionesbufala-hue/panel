@@ -1,11 +1,11 @@
 // Entrada del panel: navegación, pantalla de acceso y aviso de conexión.
-import * as api from './api.js?v=16';
-import { mesActual } from './ui.js?v=16';
-import * as unidades from './unidades.js?v=16';
-import * as combustible from './combustible.js?v=16';
-import * as costes from './costes.js?v=16';
-import * as maestros from './tecnicos.js?v=16';
-import * as liquidacion from './liquidacion.js?v=16';
+import * as api from './api.js?v=17';
+import { mesActual, avisar } from './ui.js?v=17';
+import * as unidades from './unidades.js?v=17';
+import * as combustible from './combustible.js?v=17';
+import * as costes from './costes.js?v=17';
+import * as maestros from './tecnicos.js?v=17';
+import * as liquidacion from './liquidacion.js?v=17';
 
 const VISTAS = { unidades, combustible, costes, maestros, liquidacion };
 const VISTA_INICIAL = 'unidades';
@@ -74,6 +74,16 @@ function pintarContador(p) {
   c.setAttribute('aria-label', a.title);
 }
 api.alCambiarPendientes(pintarContador);
+
+// Reintento automático de una petición a la que Google no ha contestado bien
+api.alReintentar(() => avisar('Reintentando… El servidor no ha contestado bien a la primera.', 'aviso', 6000));
+// Tras un guardado, el backend recalcula los costes en segundo plano. Un solo aviso aunque se guarde varias veces seguidas.
+let ultimoAvisoCostes = 0;
+api.alCostesEnCola(() => {
+  if (Date.now() - ultimoAvisoCostes < 20000) return;
+  ultimoAvisoCostes = Date.now();
+  avisar('Guardado. Los costes se actualizan en 1-2 minutos.', 'info', 7000);
+});
 // Primera lectura al arrancar, detrás de la de la pantalla (las peticiones salen de una en una)
 const leerPendientes = () => api.leerCompras(mesActual()).catch(() => { /* ya lo avisa la franja de conexión */ });
 

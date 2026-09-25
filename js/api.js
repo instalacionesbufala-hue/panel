@@ -23,7 +23,10 @@ export function accionesEnProduccion() {
 }
 
 const CLAVE_TESTIGO = 'bufala-panel-testigo';
-const ESPERA_MAX_MS = 60000;
+// Si Google no contesta en 30 s o devuelve su página de error, se reintenta una vez a los 4 s
+// (BACKEND.md v3.20.28: todas las escrituras son seguras de repetir).
+const ESPERA_MAX_MS = 30000;
+const PAUSA_REINTENTO_MS = 4000;
 
 export class ErrorApi extends Error {
   // tipo: 'red' (no hay conexión), 'contrato' (respuesta que no cumple el contrato),
@@ -69,6 +72,10 @@ export function alPedirAcceso(fn) { pedirAcceso = fn; }
 const oyentes = new Set();
 export function alCambiarConexion(fn) { oyentes.add(fn); }
 function avisarConexion(ok, detalle) { oyentes.forEach(fn => fn(ok, detalle)); }
+// «Reintentando…» y «los costes se actualizan en 1-2 minutos», para que la aplicación los enseñe
+const oyentesReintento = new Set(), oyentesCostesEnCola = new Set();
+export function alReintentar(fn) { oyentesReintento.add(fn); }
+export function alCostesEnCola(fn) { oyentesCostesEnCola.add(fn); }
 
 // ── Transporte a producción ────────────────────────────
 function esSesionCaducada(r) {
@@ -91,7 +98,25 @@ async function aProduccion(accion, opciones = {}) {
   if (accion !== 'ping' && !(await accionesEnProduccion()).has(accion)) {
     throw new ErrorApi(`La acción «${accion}» no figura entre las implementadas en el backend.`, 'contrato');
   }
-  return enCola(() => enviarAProduccion(accion, opciones));
+  return enCola(() => conReintento(accion, opciones));
+}
+
+// Un solo reintento, y solo para fallos de Google (página de error, sin respuesta o más de 30 s).
+// Un «no» del backend (ok:false) nunca se repite. La franja de conexión solo sale si falla el segundo.
+async function conReintento(accion, opciones) {
+  try {
+    return await enviarAProduccion(accion, opciones);
+  } catch (e) {
+    if (!e.reintentable) throw e;
+    oyentesReintento.forEach(fn => fn(accion));
+    await new Promise(r => setTimeout(r, PAUSA_REINTENTO_MS));
+    try {
+      return await enviarAProduccion(accion, opciones);
+    } catch (e2) {
+      if (e2.tipo === 'red') avisarConexion(false, e2.detalleConexion || '');
+      throw e2;
+    }
+  }
 }
 
 async function enviarAProduccion(accion, { metodo = 'GET', params = {}, cuerpo = null, conTestigo = true } = {}) {
@@ -121,12 +146,15 @@ async function enviarAProduccion(accion, { metodo = 'GET', params = {}, cuerpo =
     const resp = await fetch(url, opciones);
     texto = await resp.text();
   } catch (e) {
-    avisarConexion(false, e.name === 'AbortError' ? 'El servidor tarda demasiado en responder.' : '');
-    throw new ErrorApi(
+    // La página de error de Google no trae cabeceras CORS: el navegador la ve como fallo de red
+    const err = new ErrorApi(
       e.name === 'AbortError'
-        ? 'El servidor no ha respondido a tiempo. Lo que has escrito sigue en pantalla: vuelve a intentarlo.'
-        : 'No se puede contactar con el servidor. Si tienes conexión, suele ser un fallo momentáneo de Google: espera un minuto y vuelve a intentarlo. Lo que has escrito sigue en pantalla.',
+        ? 'El servidor no ha respondido a tiempo, ni al reintentarlo. Lo que has escrito sigue en pantalla: vuelve a intentarlo en un minuto.'
+        : 'No se puede contactar con el servidor, ni al reintentarlo. Si tienes conexión, suele ser un fallo momentáneo de Google: espera un minuto y vuelve a intentarlo. Lo que has escrito sigue en pantalla.',
       'red');
+    err.reintentable = true;
+    err.detalleConexion = e.name === 'AbortError' ? 'El servidor tarda demasiado en responder.' : '';
+    throw err;
   } finally {
     clearTimeout(temporizador);
   }
@@ -137,8 +165,10 @@ async function enviarAProduccion(accion, { metodo = 'GET', params = {}, cuerpo =
   } catch {
     avisarConexion(true);
     const segundos = Math.round((Date.now() - inicio) / 1000);
-    throw new ErrorApi(`El servidor ha fallado al responder a «${accion}» (tras ${segundos} s)${motivoPaginaError(texto)}. `
-      + 'No es un fallo del panel: hay que avisar al backend. Puedes reintentarlo.', 'backend');
+    const err = new ErrorApi(`El servidor ha fallado al responder a «${accion}» (tras ${segundos} s)${motivoPaginaError(texto)}, también al reintentarlo. `
+      + 'No es un fallo del panel: hay que avisar al backend. Puedes volver a intentarlo.', 'backend');
+    err.reintentable = true;
+    throw err;
   }
   avisarConexion(true);
 
@@ -153,6 +183,8 @@ async function enviarAProduccion(accion, { metodo = 'GET', params = {}, cuerpo =
   if (metodo !== 'GET' && accion !== 'panelLogin' && datos.accion !== accion) {
     throw new ErrorApi(`El servidor ha respondido a «${accion}» sin confirmarla. No se da por guardado.`, 'contrato');
   }
+  // Los guardados contestan enseguida y dejan el recálculo de costes en cola (1-2 minutos)
+  if (datos.costesEnCola) oyentesCostesEnCola.forEach(fn => fn(accion));
   return datos;
 }
 
@@ -401,7 +433,8 @@ function demoResponder(accion, params, p) {
       return { ok: true, mes: params.mes, facturas: demo.facturas[params.mes] || [], sinClasificar: demo.sinClasificar[params.mes] || [],
         tiposProveedor: demo.tiposProveedor, pendientes: demoPendientes(),
         tiposFactura: [...demo.tiposProveedor.filter(t => t.valor !== 'mixto'), { valor: 'materialUso', etiqueta: 'Material de uso (se reparte entre equipos)' }],
-        equiposDisponibles: demo.unidades.filter(u => u.tipo !== 'no_productiva' && u.activa !== false).map(u => u.id) };
+        equiposDisponibles: demo.unidades.filter(u => u.tipo !== 'no_productiva' && u.activa !== false).map(u => u.id),
+        tiposConEquipos: ['herramienta', 'material', 'materialUso'] };
     case 'panelFacturaDetalle': {
       const f = Object.values(demo.facturas).flat().concat(Object.values(demo.sinClasificar).flat()).find(x => x.id === params.id);
       if (!f) return { ok: false, error: 'No existe esa factura.' };
@@ -420,7 +453,7 @@ function demoResponder(accion, params, p) {
         const f = lista.find(x => x.id === p.id);
         if (f) Object.assign(f, { tipo: p.tipo, equipos: p.equipos || [], manual: true });
       }
-      return { ok: true, accion, id: p.id, tipo: p.tipo, equipos: p.equipos || [], avisos: [] };
+      return { ok: true, accion, id: p.id, tipo: p.tipo, equipos: p.equipos || [], avisos: [], costesEnCola: true };
     }
     case 'panelCostes':
       return { ok: true, desde: params.desde, hasta: params.hasta, costes: Object.entries(demo.costes)

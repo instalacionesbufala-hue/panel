@@ -1,7 +1,7 @@
 // Régimen de cada unidad: servicios al día y jornada, con fecha (BACKEND.md, encargo 4, v3.20.34).
 // Cada fila vale desde su fecha hasta la siguiente de la misma unidad; sin filas, la unidad usa porDefecto.
-import * as api from './api.js?v=23';
-import { esc, fecha, hoy, avisar, preguntar, cajaError } from './ui.js?v=23';
+import * as api from './api.js?v=24';
+import { esc, fecha, hoy, avisar, preguntar, cajaError } from './ui.js?v=24';
 
 export const leer = () => api.leerParametrosUnidades();
 

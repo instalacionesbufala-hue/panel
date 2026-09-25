@@ -1,6 +1,15 @@
 # Decisiones del panel y dudas para el backend
 
-**El contrato vive en [`BACKEND.md`](BACKEND.md)**, lo mantiene el backend y manda sobre este fichero. Aquí queda lo que decide el panel por su cuenta y lo que el panel pregunta. Revisado contra BACKEND.md **v3.20.38** el 26/09/2026.
+**El contrato vive en [`BACKEND.md`](BACKEND.md)**, lo mantiene el backend y manda sobre este fichero. Aquí queda lo que decide el panel por su cuenta y lo que el panel pregunta. Revisado contra BACKEND.md **v3.20.40** el 26/09/2026.
+
+## Festivos de solo consulta y ausencias de SAT/Gerencia — hecho (encargo 6, v3.20.40)
+
+- **Festivos en «Configuración»: solo consulta.** Se quitan el alta, la corrección y el borrado, y queda la lista con el selector de año, más la nota «Los festivos se gestionan en el calendario laboral de Holded». Los que llegan con `ambito: "Holded"` llevan la etiqueta «Holded».
+  - `panelGuardarFestivo` y `panelBorrarFestivo` salen del panel: ya no figuran en su lista de acciones (así no dejan la franja de «Modo demostración» encendida si el backend las retira) ni en `api.js`.
+  - Los **precios de material siguen editables**, sin cambios.
+- **Ausencias de SAT y Gerencia** (`equipo: ""`): en la columna «Equipo» se enseña la etiqueta «Fuera de brigada». Si el técnico no casa con ningún empleado, se sigue viendo «—».
+  - La pantalla no tiene totales de capacidad por brigada, así que no hay nada que excluir. Sí cuentan, como pide el backend, en el resumen de vacaciones de cada persona.
+- Comprobado con el simulador local: festivos sin botones y con el de Holded marcado, precios editables, y la ausencia de SAT con «Fuera de brigada».
 
 ## Ausencias: Holded es la fuente oficial — hecho (encargo 5, v3.20.38)
 

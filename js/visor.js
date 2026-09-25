@@ -1,6 +1,6 @@
 // Visor de factura: vista previa (PDF o líneas) y clasificación factura a factura (BACKEND.md v3.20.27).
-import * as api from './api.js?v=23';
-import { esc, eur, fecha, avisar, cajaError, listaAvisos } from './ui.js?v=23';
+import * as api from './api.js?v=24';
+import { esc, eur, fecha, avisar, cajaError, listaAvisos } from './ui.js?v=24';
 
 // Los tipos llegan como texto u objeto { valor, etiqueta }
 export const valorTipo = t => typeof t === 'string' ? t : (t.valor ?? t.id);

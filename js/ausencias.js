@@ -1,7 +1,7 @@
 // Pantalla de ausencias: sustituye a escribir a mano en «⏱️ Ausencias» del Sheets.
 // Se lee el año entero una vez (para el saldo de vacaciones) y el mes se filtra aquí.
-import * as api from './api.js?v=23';
-import { esc, fecha, hoy, mesActual, nombreMes, avisar, preguntar, cajaError, listaAvisos } from './ui.js?v=23';
+import * as api from './api.js?v=24';
+import { esc, fecha, hoy, mesActual, nombreMes, avisar, preguntar, cajaError, listaAvisos } from './ui.js?v=24';
 
 // Días de vacaciones al año según convenio (BACKEND.md). Solo sirve para enseñar cuántos quedan.
 const VACACIONES_ANUALES = 22;
@@ -207,7 +207,7 @@ export function montar(el) {
           <thead><tr><th>Técnico</th><th>Equipo</th><th>Motivo</th><th>Desde</th><th>Hasta</th><th class="num">Días laborables</th><th>Notas</th><th></th></tr></thead>
           <tbody>${lista.map(a => `<tr>
             <td><strong>${esc(a.tecnico || nombreTec(a.idTecnico))}</strong>${a.idTecnico ? '' : ' <span class="insignia error" title="El nombre de la hoja no coincide con ningún empleado. Corrígela eligiendo el técnico.">sin casar</span>'}
-              ${esHolded(a) ? '<span class="insignia holded" title="Se gestiona en Holded">Holded</span>' : '<span class="insignia" title="Añadida a mano en el panel">fuera de Holded</span>'}</td><td>${esc(a.equipo || '—')}</td>
+              ${esHolded(a) ? '<span class="insignia holded" title="Se gestiona en Holded">Holded</span>' : '<span class="insignia" title="Añadida a mano en el panel">fuera de Holded</span>'}</td><td>${a.equipo ? esc(a.equipo) : a.idTecnico ? '<span class="insignia" title="SAT o Gerencia: no cuenta en la capacidad de ninguna brigada">Fuera de brigada</span>' : '—'}</td>
             <td><span class="insignia motivo" style="--c:${colorDe(a.motivo)}">${esc(a.motivo)}</span></td>
             <td>${fecha(a.desde)}</td><td>${fecha(a.hasta)}</td><td class="num">${esc(a.diasLaborables ?? '—')}</td>
             <td class="tenue">${esc(a.notas || '')}</td>

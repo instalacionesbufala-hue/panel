@@ -437,11 +437,12 @@ function crearDemo() {
         { id: 'CAN-BAN', concepto: 'Bandeja 60×100 (m)', coste: 7.8, notas: '' } ] },
     ],
     ausencias: [
-      { id: 'AU1', idTecnico: 'T01', desde: `${A}-08-03`, hasta: `${A}-08-14`, motivo: 'Vacaciones', notas: '' },
-      { id: 'AU2', idTecnico: 'T02', desde: `${M}-07`, hasta: `${M}-11`, motivo: 'Vacaciones', notas: '' },
+      // Las de Holded (id que empieza por H) llegan copiadas cada mañana y son de solo consulta
+      { id: 'H1041', origen: 'holded', idTecnico: 'T01', desde: `${A}-08-03`, hasta: `${A}-08-14`, motivo: 'Vacaciones', notas: '' },
+      { id: 'H1102', origen: 'holded', idTecnico: 'T02', desde: `${M}-07`, hasta: `${M}-11`, motivo: 'Vacaciones', notas: '' },
       { id: 'AU3', idTecnico: 'T03', desde: `${M}-16`, hasta: `${M}-16`, motivo: 'Asuntos propios', notas: '' },
       { id: 'AU4', idTecnico: 'T05', desde: `${M}-21`, hasta: `${M}-23`, motivo: 'Formación', notas: 'Curso de recarga VE' },
-      { id: 'AU5', idTecnico: 'T02', desde: `${A}-07-20`, hasta: `${A}-07-31`, motivo: 'Vacaciones', notas: '' },
+      { id: 'H0987', origen: 'holded', idTecnico: 'T02', desde: `${A}-07-20`, hasta: `${A}-07-31`, motivo: 'Vacaciones', notas: '' },
       // Como en la hoja real: un nombre escrito a mano que no casa con ningún empleado
       { id: 'AU6', idTecnico: null, tecnicoTexto: 'Javi G.', desde: `${M}-02`, hasta: `${M}-03`, motivo: 'Asuntos propios', notas: '' },
     ],
@@ -461,7 +462,7 @@ function demoDiasLaborables(desde, hasta) {
 }
 function demoAusencia(a) {
   const t = demo.tecnicos.find(x => x.id === a.idTecnico);
-  return { ...a, tecnico: t?.nombre || a.tecnicoTexto || a.idTecnico, equipo: (a.idTecnico && demoUnidadDe(a.idTecnico, a.desde)) || '', diasLaborables: demoDiasLaborables(a.desde, a.hasta) };
+  return { origen: 'manual', ...a, tecnico: t?.nombre || a.tecnicoTexto || a.idTecnico, equipo: (a.idTecnico && demoUnidadDe(a.idTecnico, a.desde)) || '', diasLaborables: demoDiasLaborables(a.desde, a.hasta) };
 }
 
 // Como el backend: facturas de combustible o vehículo sin matrícula ni ESTRUCTURA, desde mayo de 2026
@@ -528,17 +529,20 @@ function demoResponder(accion, params, p) {
         motivos: demo.motivos };
     }
     case 'panelGuardarAusencia': {
+      const deHolded = id => demo.ausencias.find(a => a.id === id)?.origen === 'holded';
+      if (p.id && deHolded(p.id)) return { ok: false, error: 'Esta ausencia viene de Holded: cámbiala allí. Se actualiza aquí cada mañana.' };
       if (!p.idTecnico || !p.desde || !p.hasta || !p.motivo) return { ok: false, error: 'Faltan datos: técnico, desde, hasta y motivo.' };
       if (p.hasta < p.desde) return { ok: false, error: 'La fecha «hasta» no puede ser anterior a «desde».' };
       if (!demo.tecnicos.some(t => t.id === p.idTecnico)) return { ok: false, error: 'Ese técnico no está en la lista de ⚙️ Configuración.' };
       const choque = demo.ausencias.find(a => a.id !== p.id && a.idTecnico === p.idTecnico && a.desde <= p.hasta && a.hasta >= p.desde);
       if (choque) return { ok: false, error: `Se solapa con otra ausencia del mismo técnico: ${choque.motivo} del ${choque.desde} al ${choque.hasta}.` };
-      const a = { id: p.id || 'AU' + (Math.max(0, ...demo.ausencias.map(x => Number(x.id.slice(2)) || 0)) + 1), idTecnico: p.idTecnico, desde: p.desde, hasta: p.hasta, motivo: p.motivo, notas: p.notas || '' };
+      const a = { origen: 'manual', id: p.id || 'AU' + (Math.max(0, ...demo.ausencias.filter(x => x.id.startsWith('AU')).map(x => Number(x.id.slice(2)) || 0)) + 1), idTecnico: p.idTecnico, desde: p.desde, hasta: p.hasta, motivo: p.motivo, notas: p.notas || '' };
       const i = demo.ausencias.findIndex(x => x.id === a.id);
       if (i >= 0) demo.ausencias[i] = a; else demo.ausencias.push(a);
       return { ok: true, accion, ausencia: demoAusencia(a), avisos: [] };
     }
     case 'panelBorrarAusencia':
+      if (demo.ausencias.find(a => a.id === p.id)?.origen === 'holded') return { ok: false, error: 'Esta ausencia viene de Holded: anúlala allí. Se actualiza aquí cada mañana.' };
       demo.ausencias = demo.ausencias.filter(a => a.id !== p.id);
       return { ok: true, accion };
     case 'panelParametrosUnidades':

@@ -1,6 +1,17 @@
 # Decisiones del panel y dudas para el backend
 
-**El contrato vive en [`BACKEND.md`](BACKEND.md)**, lo mantiene el backend y manda sobre este fichero. Aquí queda lo que decide el panel por su cuenta y lo que el panel pregunta. Revisado contra BACKEND.md **v3.20.34** el 26/09/2026.
+**El contrato vive en [`BACKEND.md`](BACKEND.md)**, lo mantiene el backend y manda sobre este fichero. Aquí queda lo que decide el panel por su cuenta y lo que el panel pregunta. Revisado contra BACKEND.md **v3.20.38** el 26/09/2026.
+
+## Ausencias: Holded es la fuente oficial — hecho (encargo 5, v3.20.38)
+
+- **Aviso fijo** arriba en «Ausencias»: «Las ausencias se registran en Holded. Se gestionan en Holded · se actualizan cada mañana (7:00)».
+- **Las de Holded, de solo consulta.** Una ausencia es de Holded si `origen === "holded"`; si no llegara `origen`, se mira si el `id` empieza por `H`.
+  - En la lista llevan la etiqueta «Holded» y «Se cambia en Holded» en lugar de Corregir y Borrar.
+  - En el calendario, al pulsarlas se abre una ficha de solo lectura que explica que se cambian o anulan en Holded.
+  - El panel nunca envía `panelGuardarAusencia` ni `panelBorrarAusencia` con una de Holded. Si el backend lo rechazara igualmente, se enseña su `error`.
+- **Alta manual excepcional.** Desaparece el formulario de alta rápida. Queda un botón secundario, «Añadir ausencia fuera de Holded», y el clic en un día vacío del calendario. El diálogo avisa de que, si luego se registra en Holded, la de Holded la sustituirá.
+- **Marcas:** las manuales llevan la etiqueta «fuera de Holded» en la lista y una esquina marcada en el calendario, con su leyenda.
+- Comprobado con el simulador local: ficha de solo lectura de una de Holded, alta fuera de Holded con su aviso y lista con las dos procedencias.
 
 ## Régimen de cada unidad: servicios/día y jornada con fecha — hecho (encargo 4, v3.20.34)
 
@@ -40,7 +51,7 @@ Nueva pestaña «Configuración» (`js/configuracion.js`). Irá sola a producci�
 
 Nueva pestaña «Ausencias» (`js/ausencias.js`). Desde la v3.20.30 el ping anuncia `panelAusencias`, `panelGuardarAusencia` y `panelBorrarAusencia`, así que va a producción sola. Las dos escrituras van emparejadas con `panelAusencias`.
 - Se lee el **año entero** (`desde = AAAA-01-01`, `hasta = AAAA-12-31`) y el mes se filtra en el navegador; al cambiar de año se vuelve a leer.
-- **Alta rápida** arriba (técnico, desde, hasta, motivo, notas). Si el backend rechaza, por ejemplo por un **solape**, se enseña su `error` y se conserva lo escrito.
+- **Alta**: desde la v3.20.38 solo excepcional (ver «Holded es la fuente oficial»). Si el backend rechaza, por ejemplo por un **solape**, se enseña su `error` y se conserva lo escrito.
 - **Calendario del mes**: una fila por técnico y una columna por día, con fines de semana sombreados y un color por motivo. Pulsar un día vacío abre el alta con ese técnico y ese día; pulsar una ausencia abre su corrección.
 - **Lista del mes** con Corregir y Borrar (borrar pide confirmación). Filtros de técnico y motivo.
 - **Resumen del año**: días laborables de vacaciones disfrutados y cuántos quedan de 22, y el resto de motivos. Una ausencia cuenta en el año en que empieza.

@@ -433,3 +433,11 @@ tr.sin-casar .cal-tec { color: var(--error); }
 .cambio-regimen { border: 1px solid var(--borde); border-radius: 14px; padding: 10px 12px 12px; margin: 0; display: grid; gap: 8px; }
 .cambio-regimen legend { font-size: .78rem; font-weight: 800; color: var(--tenue); text-transform: uppercase; letter-spacing: .06em; padding: 0 4px; }
 .dialogo:has(.cambio-regimen) { width: min(620px, calc(100vw - 2rem)); }
+
+/* Ausencias: Holded es la fuente oficial */
+.aviso-holded { display: flex; align-items: center; gap: 12px; flex-wrap: wrap; }
+.aviso-holded > div { flex: 1 1 320px; }
+.insignia.holded { background: #EAF1FF; color: #2046C8; border-color: transparent; }
+/* Las añadidas fuera de Holded llevan una esquina marcada en el calendario */
+.cal-celda.con.manual { background-image: linear-gradient(135deg, var(--texto) 0 5px, transparent 5px); }
+.leyenda .marca-manual { background: linear-gradient(135deg, var(--texto) 0 5px, var(--superficie-2) 5px); border: 1px solid var(--borde-fuerte); }

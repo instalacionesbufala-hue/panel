@@ -1,7 +1,7 @@
 // Pantalla de ausencias: sustituye a escribir a mano en «⏱️ Ausencias» del Sheets.
 // Se lee el año entero una vez (para el saldo de vacaciones) y el mes se filtra aquí.
-import * as api from './api.js?v=22';
-import { esc, fecha, hoy, mesActual, nombreMes, avisar, preguntar, cajaError, listaAvisos } from './ui.js?v=22';
+import * as api from './api.js?v=23';
+import { esc, fecha, hoy, mesActual, nombreMes, avisar, preguntar, cajaError, listaAvisos } from './ui.js?v=23';
 
 // Días de vacaciones al año según convenio (BACKEND.md). Solo sirve para enseñar cuántos quedan.
 const VACACIONES_ANUALES = 22;
@@ -9,6 +9,11 @@ const esVacaciones = motivo => /vacacion/i.test(String(motivo || ''));
 // Color estable por motivo, para el calendario
 const COLORES = ['#3B5BF0', '#12B3A0', '#E39A1B', '#F0609A', '#7C6CF6', '#1F8FD6', '#4E9E3A', '#D9467A'];
 const DIAS_SEMANA = ['D', 'L', 'M', 'X', 'J', 'V', 'S'];
+
+// Holded es la fuente oficial (BACKEND.md v3.20.38): el backend copia cada mañana las ausencias aceptadas.
+// Esas son de solo consulta; el alta manual queda para lo excepcional.
+const esHolded = a => a.origen === 'holded' || (!a.origen && /^H/.test(String(a.id || '')));
+const NOTA_HOLDED = 'Se gestionan en Holded · se actualizan cada mañana (7:00).';
 
 const dos = n => String(n).padStart(2, '0');
 const diasDelMes = mes => { const [a, m] = mes.split('-').map(Number); return new Date(a, m, 0).getDate(); };
@@ -20,7 +25,6 @@ export function montar(el) {
   let datos = null;            // respuesta de panelAusencias del año
   let errorCarga = null;
   let filtroTec = '', filtroMotivo = '';
-  let guardando = false;
 
   async function recargar() {
     errorCarga = null;
@@ -37,7 +41,6 @@ export function montar(el) {
   // Una ausencia cuyo nombre no casa con ningún empleado llega sin idTecnico (BACKEND.md v3.20.30):
   // se agrupa por su texto y se enseña aparte, para corregirla eligiendo el técnico.
   const claveTec = a => a.idTecnico || 'texto:' + (a.tecnico || '?');
-  const activos = () => (datos?.tecnicos || []).filter(t => t.activo !== false);
   // Filas del calendario y del resumen: los activos, los de baja que tengan ausencias este año y los nombres sin casar
   function filas() {
     const conAusencias = new Set((datos?.ausencias || []).map(claveTec));
@@ -83,7 +86,8 @@ export function montar(el) {
       <option value="">— Elige —</option>
       ${(datos.motivos || []).map(m => `<option ${m === v.motivo ? 'selected' : ''}>${esc(m)}</option>`).join('')}
     </select></label>
-    <label>Notas (opcional)<input name="notas" value="${esc(v.notas || '')}" maxlength="200"></label>`;
+    <label>Notas (opcional)<input name="notas" value="${esc(v.notas || '')}" maxlength="200"></label>
+    ${v.id ? '' : '<p class="caja-aviso">Solo para lo que no se registre en Holded. Si después se registra en Holded, la de Holded sustituirá a esta.</p>'}`;
 
   function validar(v) {
     if (!v.idTecnico || !v.desde || !v.hasta || !v.motivo) return 'Faltan datos: técnico, desde, hasta y motivo.';
@@ -100,9 +104,10 @@ export function montar(el) {
 
   // Abre el diálogo; si el servidor rechaza (p. ej. un solape), se vuelve a abrir con lo escrito y el motivo
   async function editar(inicial) {
+    if (esHolded(inicial)) return verHolded(inicial);
     let v = { ...inicial }, error = null;
     for (;;) {
-      const form = await preguntar(v.id ? 'Corregir ausencia' : 'Nueva ausencia',
+      const form = await preguntar(v.id ? 'Corregir ausencia' : 'Añadir ausencia fuera de Holded',
         (error ? cajaError(error, 'No se ha guardado') : '') + campos(v), { aceptar: 'Guardar' });
       if (!form) return;
       v = { ...v, ...Object.fromEntries(new FormData(form)) };
@@ -127,24 +132,13 @@ export function montar(el) {
     }
   }
 
-  // Alta rápida desde la barra de arriba
-  async function altaRapida(form) {
-    const v = Object.fromEntries(new FormData(form));
-    const falta = validar(v);
-    if (falta) { avisar(falta, 'error'); return; }
-    guardando = true; pintar();
-    try {
-      await guardar(v);
-      guardando = false;
-      await recargar();
-      return;
-    } catch (e) {
-      avisar(e.message, 'error', 12000);   // p. ej. el solape que explica el backend
-    }
-    guardando = false; pintar();
-    // Se conserva lo escrito
-    const f = el.querySelector('#alta-ausencia');
-    if (f) for (const [k, val] of Object.entries(v)) if (f.elements[k]) f.elements[k].value = val;
+  // Las de Holded solo se consultan: se cambian o se anulan en Holded
+  function verHolded(a) {
+    return preguntar('Ausencia de Holded',
+      `<p><strong>${esc(a.tecnico || nombreTec(a.idTecnico))}</strong>: ${esc(a.motivo)} del ${fecha(a.desde)} al ${fecha(a.hasta)}${a.diasLaborables != null ? ` (${a.diasLaborables} día${a.diasLaborables === 1 ? '' : 's'} laborable${a.diasLaborables === 1 ? '' : 's'})` : ''}.</p>
+       ${a.notas ? `<p class="tenue">${esc(a.notas)}</p>` : ''}
+       <p class="caja-aviso">Esta ausencia viene de Holded. Para cambiarla o anularla, hazlo en Holded: aquí se actualiza cada mañana a las 7:00.</p>`,
+      { aceptar: 'Entendido', cancelar: 'Cerrar' });
   }
 
   // ── Pintado ──
@@ -165,13 +159,14 @@ export function montar(el) {
           const a = suyas.find(x => x.desde <= d && x.hasta >= d);
           if (!a) return t.sinCasar || t.inactivo ? `<td class="cal-celda ${finde ? 'finde' : ''} inerte"></td>`
             : `<td class="cal-celda ${finde ? 'finde' : ''}" data-accion="nueva-en" data-tec="${esc(t.id)}" data-dia="${d}" title="Añadir ausencia a ${esc(t.nombre)} el ${fecha(d)}"></td>`;
-          return `<td class="cal-celda con ${finde ? 'finde' : ''}" style="--c:${colorDe(a.motivo)}" data-accion="editar" data-id="${esc(a.id)}"
-            title="${esc(a.motivo)} · ${fecha(a.desde)} a ${fecha(a.hasta)}${a.notas ? ' · ' + esc(a.notas) : ''}"></td>`;
+          return `<td class="cal-celda con ${finde ? 'finde' : ''} ${esHolded(a) ? 'holded' : 'manual'}" style="--c:${colorDe(a.motivo)}" data-accion="editar" data-id="${esc(a.id)}"
+            title="${esHolded(a) ? 'Holded · ' : 'Fuera de Holded · '}${esc(a.motivo)} · ${fecha(a.desde)} a ${fecha(a.hasta)}${a.notas ? ' · ' + esc(a.notas) : ''}"></td>`;
         }).join('')}</tr>`;
       }).join('') || `<tr><td colspan="${n + 1}" class="vacio">No hay técnicos.</td></tr>`}</tbody>
     </table></div>
     <div class="leyenda">${(datos.motivos || []).map(m => `<span><i style="background:${colorDe(m)}"></i>${esc(m)}</span>`).join('')}
-      <span class="tenue">Pulsa un día vacío para añadir, o una ausencia para corregirla.</span></div>`;
+      <span><i class="marca-manual"></i>Fuera de Holded</span>
+      <span class="tenue">Pulsa una ausencia para verla. Las añadidas fuera de Holded se pueden corregir; en un día vacío se añade una.</span></div>`;
   }
 
   function pintar(cargando = false) {
@@ -179,7 +174,9 @@ export function montar(el) {
         <div><h1>Ausencias</h1><p class="tenue">Vacaciones, permisos y bajas. Los días laborables los calcula el servidor (de lunes a viernes, sin festivos) y los costes se recalculan solos.</p></div>
         <span class="empuje"></span>
         <label>Mes<input type="month" id="mes" value="${esc(mes)}" required></label>
-      </div>`;
+      </div>
+      <div class="caja-aviso aviso-holded"><div><strong>Las ausencias se registran en Holded.</strong> ${NOTA_HOLDED} Aquí se consultan; solo lo excepcional se añade a mano.</div>
+        ${datos ? '<button class="boton secundario" data-accion="nueva">Añadir ausencia fuera de Holded</button>' : ''}</div>`;
     if (cargando && !datos) { el.innerHTML = cabecera + '<p class="cargando">Cargando ausencias…</p>'; return; }
     if (errorCarga && !datos) {
       el.innerHTML = cabecera + cajaError(errorCarga, 'No se han podido cargar las ausencias') + '<button class="boton" data-accion="recargar">Reintentar</button>';
@@ -191,19 +188,6 @@ export function montar(el) {
 
     el.innerHTML = cabecera + `
       ${errorCarga ? cajaError(errorCarga, 'No se ha podido actualizar') : ''}
-      <form class="bloque alta-ausencia" id="alta-ausencia" autocomplete="off">
-        <h2>Alta rápida</h2>
-        <div class="fila-campos">
-          <label>Técnico<select name="idTecnico" required><option value="">— Elige —</option>
-            ${activos().map(t => `<option value="${esc(t.id)}">${esc(t.nombre)}</option>`).join('')}</select></label>
-          <label>Desde<input type="date" name="desde" required></label>
-          <label>Hasta (incluido)<input type="date" name="hasta" required></label>
-          <label>Motivo<select name="motivo" required><option value="">— Elige —</option>
-            ${(datos.motivos || []).map(m => `<option>${esc(m)}</option>`).join('')}</select></label>
-          <label class="ancho">Notas<input name="notas" maxlength="200" placeholder="Opcional"></label>
-          <button class="boton" type="submit" ${guardando ? 'disabled' : ''}>${guardando ? 'Guardando…' : 'Añadir'}</button>
-        </div>
-      </form>
 
       <section class="bloque">
         <div class="barra" style="align-items:end;margin-bottom:.75rem">
@@ -222,13 +206,14 @@ export function montar(el) {
         <div class="tabla-scroll"><table>
           <thead><tr><th>Técnico</th><th>Equipo</th><th>Motivo</th><th>Desde</th><th>Hasta</th><th class="num">Días laborables</th><th>Notas</th><th></th></tr></thead>
           <tbody>${lista.map(a => `<tr>
-            <td><strong>${esc(a.tecnico || nombreTec(a.idTecnico))}</strong>${a.idTecnico ? '' : ' <span class="insignia error" title="El nombre de la hoja no coincide con ningún empleado. Corrígela eligiendo el técnico.">sin casar</span>'}</td><td>${esc(a.equipo || '—')}</td>
+            <td><strong>${esc(a.tecnico || nombreTec(a.idTecnico))}</strong>${a.idTecnico ? '' : ' <span class="insignia error" title="El nombre de la hoja no coincide con ningún empleado. Corrígela eligiendo el técnico.">sin casar</span>'}
+              ${esHolded(a) ? '<span class="insignia holded" title="Se gestiona en Holded">Holded</span>' : '<span class="insignia" title="Añadida a mano en el panel">fuera de Holded</span>'}</td><td>${esc(a.equipo || '—')}</td>
             <td><span class="insignia motivo" style="--c:${colorDe(a.motivo)}">${esc(a.motivo)}</span></td>
             <td>${fecha(a.desde)}</td><td>${fecha(a.hasta)}</td><td class="num">${esc(a.diasLaborables ?? '—')}</td>
             <td class="tenue">${esc(a.notas || '')}</td>
-            <td class="num"><div class="botones-tipo" style="justify-content:flex-end">
+            <td class="num">${esHolded(a) ? '<span class="tenue">Se cambia en Holded</span>' : `<div class="botones-tipo" style="justify-content:flex-end">
               <button class="boton secundario mini" data-accion="editar" data-id="${esc(a.id)}">Corregir</button>
-              <button class="boton peligro mini" data-accion="borrar" data-id="${esc(a.id)}">Borrar</button></div></td>
+              <button class="boton peligro mini" data-accion="borrar" data-id="${esc(a.id)}">Borrar</button></div>`}</td>
           </tr>`).join('') || '<tr><td colspan="8" class="vacio">No hay ausencias este mes con estos filtros.</td></tr>'}</tbody>
         </table></div>
       </section>
@@ -267,15 +252,11 @@ export function montar(el) {
     const buscar = () => datos.ausencias.find(x => x.id === b.dataset.id);
     if (a === 'recargar') recargar();
     if (a === 'editar' && buscar()) editar(buscar());
-    if (a === 'borrar' && buscar()) borrar(buscar());
+    if (a === 'borrar' && buscar() && !esHolded(buscar())) borrar(buscar());
+    if (a === 'nueva') editar({});
     if (a === 'nueva-en') editar({ idTecnico: b.dataset.tec, desde: b.dataset.dia, hasta: b.dataset.dia });
   }
-  function alEnviar(ev) {
-    if (ev.target.id !== 'alta-ausencia') return;
-    ev.preventDefault();
-    altaRapida(ev.target);
-  }
-  const eventos = { change: alCambiar, click: alPulsar, submit: alEnviar };
+  const eventos = { change: alCambiar, click: alPulsar };
   Object.entries(eventos).forEach(([k, fn]) => el.addEventListener(k, fn));
   recargar();
 

@@ -60,7 +60,7 @@ Además, el panel guarda en memoria una copia de `panelConfig` durante 10 minuto
 
 1. **`panelClasificarFactura` y `accion`:** ¿la respuesta repite `accion`? Detalle en «Clasificar factura a factura».
 
-Además, Pendiente del backend: altas y bajas de técnicos, vehículos y unidades dentro de `panelGuardarConfig`, y `panelLiquidacion`.
+Pendiente también del backend: altas y bajas de técnicos, vehículos y unidades dentro de `panelGuardarConfig`, y `panelLiquidacion`.
 
 ## Resueltas por BACKEND.md (23/09/2026, tarde) — hecho
 

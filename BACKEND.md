@@ -154,6 +154,30 @@ Hoy el desplegable solo ofrece los vehículos **vigentes en el mes de la factura
 - **Enseñar siempre las cuatro matrículas actuales** (`vehiculos` con `activo: true`), en cualquier mes, más las que ya tenga asignadas la factura.
 - **Añadir la opción «Estructura (sin vehículo)»**, que se envía como `matricula: "ESTRUCTURA"`. El backend (v3.20.24) la acepta y la imputa a Estructura sin aviso de «sin matrícula». En `panelCompras` vuelve como `matricula: "ESTRUCTURA"`: el panel debe contarla como asignada y rotularla «Estructura».
 
+### ENCARGO NUEVO 3 — «Configuración»: festivos y precios de material (26/09/2026 · contrato; backend en preparación)
+
+Siguiente paso del objetivo de César: **que no tenga que escribir nunca en el Google Sheets**. Nueva pestaña del panel, **«Configuración»**, con dos apartados. Empieza en modo demostración; el backend publicará estas acciones con este contrato.
+
+**A. Festivos** (hoy en ⚙️ Configuración A129:C200; se usan para los días laborables de capacidad, rendimiento y ausencias)
+
+| Acción | Método | Petición | Respuesta |
+|---|---|---|---|
+| `panelFestivos` | GET | `token`, `anio?` | `{ ok, accion, festivos: [{ fecha: "AAAA-MM-DD", nombre, ambito }] }` · `ambito` = «Nacional», «Comunidad de Madrid», «Local» u otro texto |
+| `panelGuardarFestivo` | POST | `{ fechaAnterior?, fecha, nombre, ambito }` (sin `fechaAnterior` = alta; con ella = edición) | `{ ok, accion, festivo }` · rechaza fechas repetidas |
+| `panelBorrarFestivo` | POST | `{ fecha }` | `{ ok, accion }` |
+
+Pantalla: lista del año con selector de año, alta rápida, edición y borrado con confirmación, y aviso si un festivo cae en sábado o domingo (no resta días laborables).
+
+**B. Precios de coste de material** (hoy en ⚙️ Configuración A60:D115: ID · CONCEPTO · COSTE €/UD · NOTAS, con filas de título «── … ──»). Son los precios con los que se recalcula el coste de material de cada instalación.
+
+| Acción | Método | Petición | Respuesta |
+|---|---|---|---|
+| `panelPrecios` | GET | `token` | `{ ok, accion, familias: [{ titulo, conceptos: [{ id, concepto, coste, notas }] }] }` |
+| `panelGuardarPrecios` | POST | `{ cambios: [{ id, coste, notas? }] }` | `{ ok, accion, guardados, avisos }` |
+
+- Solo se cambian **coste** y **notas**. El `id` y el `concepto` no se editan: los usa el tarifario y la exportación a Holded, y tocarlos rompería la coherencia con Holded.
+- Pantalla: tabla agrupada por familia, edición en línea del coste, un solo botón «Guardar cambios» para varios a la vez, y el precio anterior visible junto al nuevo mientras no se guarda. Aviso de que el cambio recalcula el coste de material de todas las instalaciones (col AJ del Registro).
+
 ### YA EN PRODUCCIÓN (26/09/2026, backend v3.20.30): ausencias y Dirección General
 
 Las seis acciones (`panelAusencias`, `panelGuardarAusencia`, `panelBorrarAusencia`, `direccionLogin`, `direccionIndicadores`, `direccionInforme`) ya figuran en `accionesPanel` del `ping`: el panel y `direccion.html` dejan el modo demostración solos. **Respuestas a las dudas de DECISIONES.md:**

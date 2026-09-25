@@ -154,6 +154,12 @@ Hoy el desplegable solo ofrece los vehículos **vigentes en el mes de la factura
 - **Enseñar siempre las cuatro matrículas actuales** (`vehiculos` con `activo: true`), en cualquier mes, más las que ya tenga asignadas la factura.
 - **Añadir la opción «Estructura (sin vehículo)»**, que se envía como `matricula: "ESTRUCTURA"`. El backend (v3.20.24) la acepta y la imputa a Estructura sin aviso de «sin matrícula». En `panelCompras` vuelve como `matricula: "ESTRUCTURA"`: el panel debe contarla como asignada y rotularla «Estructura».
 
+### ENCARGO NUEVO 6 — Festivos de solo consulta y ausencias de SAT/Gerencia (26/09/2026 · backend v3.20.40)
+
+**Festivos (pestaña «Configuración»).** Decisión de César: manda Holded, así que en el panel **se quitan los botones de alta, edición y borrado de festivos**. La lista queda **de solo consulta** (con selector de año), con una nota: «Los festivos se gestionan en el calendario laboral de Holded». El backend añade solo a la lista los festivos del centro de trabajo que tenga Holded (llegan con `ambito: "Holded"`); los de 2026 ya cargados se conservan. Los **precios de material siguen editables**.
+
+**Ausencias de SAT y Gerencia.** Desde v3.20.40, `panelAusencias` trae también las de Alexis Almonte (SAT) y César García (Gerencia), con **`equipo: ""`**. En la pantalla: mostrarlas con la etiqueta **«Fuera de brigada»** en lugar del equipo, y excluirlas de cualquier total de «capacidad» por brigada (sí contarlas en los días de vacaciones de cada persona).
+
 ### ENCARGO NUEVO 5 — Ausencias: Holded es la fuente oficial (26/09/2026 · backend v3.20.38)
 
 Decisión de César: **Holded es la aplicación oficial de la empresa**. Las ausencias se registran en Holded y cada mañana (7:00) el backend copia las **aceptadas** a ⏱️ Ausencias; si se cancelan o rechazan en Holded, desaparecen. Si una de Holded coincide con una metida a mano, la manual se sustituye.

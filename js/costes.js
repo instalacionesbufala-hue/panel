@@ -1,6 +1,7 @@
 // Pantalla de costes de personal: volcar el coste de empresa que entrega la gestoría.
-import * as api from './api.js?v=24';
-import { esc, mesActual, sumarMeses, nombreMes, vigenteEnMes, leerImporte, importeEditable, avisar, cajaError, selectorMes } from './ui.js?v=24';
+import * as api from './api.js?v=25';
+import { ayuda, AYUDA } from './ayudas.js?v=25';
+import { esc, mesActual, sumarMeses, nombreMes, vigenteEnMes, leerImporte, importeEditable, avisar, cajaError, selectorMes } from './ui.js?v=25';
 
 // origen: 'gestoria' (nómina), 'manual' (corregido a mano) o 'estimacion' (coste de referencia, solo lectura)
 const ORIGENES_REALES = ['gestoria', 'manual'];
@@ -152,7 +153,7 @@ export function montar(el) {
         <button class="boton" data-accion="guardar" ${hayCambios && !guardando ? '' : 'disabled'}>${guardando ? 'Guardando…' : 'Guardar costes'}</button>
       </div>
       <div class="tabla-scroll"><table>
-        <thead><tr><th>Técnico</th><th>Grupo</th><th class="num">Coste de empresa del mes</th><th>Estado</th></tr></thead>
+        <thead><tr><th>Técnico</th><th>Grupo</th><th class="num">Coste de empresa del mes ${ayuda(AYUDA.costeEmpresa)}</th><th>Estado</th></tr></thead>
         <tbody>${tecnicosDelMes().map(t => {
           const f = filas.get(t.id);
           const estado = {

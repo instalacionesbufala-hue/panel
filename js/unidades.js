@@ -1,7 +1,8 @@
 // Pantalla de unidades: formar unidades arrastrando técnicos y vehículos.
-import * as api from './api.js?v=24';
-import { esc, fecha, hoy, vigente, avisar, preguntar, cajaError, listaAvisos } from './ui.js?v=24';
-import * as regimen from './regimen.js?v=24';
+import * as api from './api.js?v=25';
+import { esc, fecha, hoy, vigente, avisar, preguntar, cajaError, listaAvisos } from './ui.js?v=25';
+import * as regimen from './regimen.js?v=25';
+import { ayuda, AYUDA } from './ayudas.js?v=25';
 
 const LIBRE = '__libre__';
 // El rol no restringe nada (BACKEND.md): cualquier técnico va a cualquier unidad. Solo se avisa
@@ -251,7 +252,7 @@ export function montar(el) {
                 <header><h3>${esc(nombreUnidad(u))}</h3>
                   ${unidad(u)?.computaVariable === false ? '<span class="insignia rosa" title="Esta unidad y sus técnicos quedan fuera del cálculo del variable">no computa variable</span>' : ''}
                   <span class="insignia">${c.tecs.length === 0 ? 'sin técnicos' : c.tecs.length === 1 ? '1 técnico' : c.tecs.length + ' técnicos'}</span></header>
-                ${insigniaRegimen(u)}
+                <div class="fila-regimen">${insigniaRegimen(u)}${ayuda(AYUDA.regimen)}</div>
                 ${c.choques.length ? `<p class="insignia error">Dato incoherente en el servidor: ${esc(c.choques.join('; '))}</p>` : ''}
                 <div class="hueco" data-unidad="${esc(u)}" data-acepta="tec">
                   <span class="hueco-titulo">Técnicos</span>
@@ -276,14 +277,14 @@ export function montar(el) {
             <circle class="pista" cx="48" cy="48" r="${r}" fill="none" stroke-width="11"/>
             <circle cx="48" cy="48" r="${r}" fill="none" stroke="url(#grad-anillo)" stroke-width="11" stroke-linecap="round"
               stroke-dasharray="${(vuelta * pct(asignadosTec.size, totalTec) / 100).toFixed(1)} ${vuelta.toFixed(1)}" transform="rotate(-90 48 48)"/></svg>
-          <div><small>Plantilla asignada · ${esc(fecha(dia))}</small>
+          <div><small>Plantilla asignada · ${esc(fecha(dia))} ${ayuda(AYUDA.plantilla)}</small>
             <div class="cifra">${asignadosTec.size}<span> de ${totalTec}</span></div>
             <p>${libresTec.length ? `${libresTec.length} técnico${libresTec.length === 1 ? '' : 's'} sin unidad.` : 'Toda la plantilla tiene unidad.'}
               ${brigadas.filter(([, c]) => !c.tecs.length).length ? ' Hay brigadas vacías.' : ''}</p></div>
         </div>
-        <div class="kpi"><small>Brigadas completas</small><div class="cifra">${completas}<span> / ${brigadas.length}</span></div>
+        <div class="kpi"><small>Brigadas completas ${ayuda(AYUDA.brigadasCompletas)}</small><div class="cifra">${completas}<span> / ${brigadas.length}</span></div>
           <div class="medidor"><i style="width:${pct(completas, brigadas.length)}%"></i></div></div>
-        <div class="kpi ${filas.length ? 'aviso' : ''}"><small>${lectura ? 'Vehículos en uso' : 'Cambios sin guardar'}</small>
+        <div class="kpi ${filas.length ? 'aviso' : ''}"><small>${lectura ? 'Vehículos en uso' : 'Cambios sin guardar'} ${ayuda(lectura ? AYUDA.vehiculosEnUso : AYUDA.cambiosSinGuardar)}</small>
           <div class="cifra">${lectura ? `${asignadosVeh.size}<span> / ${totalVeh}</span>` : filas.length}</div>
           ${lectura ? `<div class="medidor"><i style="width:${pct(asignadosVeh.size, totalVeh)}%"></i></div>` : `<span class="tenue">Vehículos en uso: ${asignadosVeh.size} de ${totalVeh}</span>`}</div>
       </div>`;
@@ -320,7 +321,7 @@ export function montar(el) {
             ${brigadas.map(tarjeta).join('') || '<p class="vacio">No hay brigadas activas. Créalas en «Técnicos y vehículos».</p>'}
           </div>
           ${noProductivas.length ? `
-          <h2 class="zona-titulo">No productivas <span class="tenue">· sin límite de técnicos</span></h2>
+          <h2 class="zona-titulo">No productivas <span class="tenue">· sin límite de técnicos</span> ${ayuda(AYUDA.noProductivas)}</h2>
           <div class="unidades">${noProductivas.map(tarjeta).join('')}</div>` : ''}
         </section>
         <section class="columna" data-libre="veh" aria-label="Vehículos sin asignar">

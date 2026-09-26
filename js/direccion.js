@@ -1,8 +1,9 @@
 // Página de la Dirección General (direccion.html): indicadores del puesto, solo lectura.
 // Acceso propio (rol «direccion»): su testigo se guarda aparte y solo sirve para las acciones direccion*.
 // Mientras el backend no las publique en el ping, se enseñan datos de ejemplo claramente marcados.
-import * as api from './api.js?v=24';
-import { esc, fecha, avisar, cajaError, mesActual, sumarMeses } from './ui.js?v=24';
+import * as api from './api.js?v=25';
+import { ayuda, AYUDA, activarAyudas } from './ayudas.js?v=25';
+import { esc, fecha, avisar, cajaError, mesActual, sumarMeses } from './ui.js?v=25';
 
 const $ = s => document.querySelector(s);
 const CLAVE_TESTIGO = 'bufala-direccion-testigo';
@@ -66,11 +67,20 @@ const pct = v => (v === null || v === undefined || v === '') ? '—' : `${fmtNum
 
 function tarjeta(ind) {
   return `<article class="indicador ${ind.datoManual ? 'manual' : ''}">
-    <header><h3>${esc(ind.nombre || ind.clave)}</h3><span class="insignia">${esc(ind.periodicidad || '')}</span></header>
+    <header><h3>${esc(ind.nombre || ind.clave)} ${ayuda([ind.formula, ind.datoManual ? AYUDA.datoManual : ''].filter(Boolean).join(' ') || ayudaPorClave(ind.clave))}</h3><span class="insignia">${esc(ind.periodicidad || '')}</span></header>
     <div class="indicador-valor">${valorTexto(ind)}</div>
     ${ind.nota ? `<p class="tenue indicador-nota">${esc(ind.nota)}</p>` : ''}
     ${ind.formula ? `<details><summary>Fórmula</summary><p>${esc(ind.formula)}</p></details>` : ''}
   </article>`;
+}
+
+// Textos del encargo para las columnas por equipo y los indicadores que no traigan fórmula
+function ayudaPorClave(clave) {
+  const c = String(clave || '').toLowerCase();
+  if (/rendimiento|productividad/.test(c)) return AYUDA.rendimiento;
+  if (/aprovechamiento|ocupacion/.test(c)) return AYUDA.aprovechamiento;
+  if (/tiempo/.test(c)) return AYUDA.tiempoMedio;
+  return '';
 }
 
 // ── Datos ──
@@ -142,7 +152,7 @@ function pintar() {
     ${seccion('semanal', sem.desde ? `Semana ${esc(sem.semana || '')} · del ${fecha(sem.desde)} al ${fecha(sem.hasta)}` : 'Semana', 'Semanal',
       `<label>Semana<input type="week" id="p-semana" value="${esc(periodo.semana)}" required></label>`,
       lista(sem.indicadores) + ((sem.porEquipo || []).length ? `<h3 class="subtitulo">Por equipo</h3><div class="tabla-scroll"><table>
-        <thead><tr><th>Equipo</th>${columnasEquipo.map(c => `<th class="num">${esc(nombreColumna[c] || c)}</th>`).join('')}</tr></thead>
+        <thead><tr><th>Equipo</th>${columnasEquipo.map(c => `<th class="num">${esc(nombreColumna[c] || c)} ${ayuda(ayudaPorClave(c))}</th>`).join('')}</tr></thead>
         <tbody>${sem.porEquipo.map(f => `<tr><td><strong>${esc(f.equipo)}</strong></td>${columnasEquipo.map(c =>
           `<td class="num">${c === 'ocupacion' ? pct(f[c]) : (f[c] === null || f[c] === undefined ? '—' : esc(typeof f[c] === 'number' ? fmtNum.format(f[c]) : f[c]))}</td>`).join('')}</tr>`).join('')}</tbody>
       </table></div>` : ''))}
@@ -154,7 +164,7 @@ function pintar() {
     ${seccion('por-alta', 'Incorporaciones', 'Por incorporación', '',
       `<p class="tenue">Días desde el alta hasta que el técnico trabaja con autonomía.</p>
       <div class="tabla-scroll"><table>
-        <thead><tr><th>Técnico</th><th>Alta</th><th class="num">Días hasta autonomía</th></tr></thead>
+        <thead><tr><th>Técnico</th><th>Alta</th><th class="num">Días hasta autonomía ${ayuda('Días desde el alta hasta que el técnico trabaja con autonomía. ' + AYUDA.datoManual.replace('Este dato', 'Si pone «dato manual», este dato'))}</th></tr></thead>
         <tbody>${(d.porAlta || []).map(f => `<tr><td><strong>${esc(f.tecnico)}</strong></td><td>${fecha(f.alta)}</td>
           <td class="num">${f.datoManual ? '<span class="insignia aviso">dato manual</span>' : f.diasHastaAutonomia === null || f.diasHastaAutonomia === undefined ? '<span class="tenue">en curso</span>' : esc(f.diasHastaAutonomia)}</td></tr>`).join('')
           || '<tr><td colspan="3" class="vacio">No hay incorporaciones.</td></tr>'}</tbody>
@@ -232,6 +242,7 @@ api.alCambiarConexion((ok, detalle) => {
   f.innerHTML = `<span><strong>Sin conexión con el servidor.</strong> ${esc(detalle || '')}</span>`;
   f.hidden = false;
 });
+activarAyudas();
 api.alReintentar(() => avisar('Reintentando… El servidor no ha contestado bien a la primera.', 'aviso', 6000));
 
 // ── Arranque ──

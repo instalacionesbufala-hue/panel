@@ -441,3 +441,23 @@ tr.sin-casar .cal-tec { color: var(--error); }
 /* Las añadidas fuera de Holded llevan una esquina marcada en el calendario */
 .cal-celda.con.manual { background-image: linear-gradient(135deg, var(--texto) 0 5px, transparent 5px); }
 .leyenda .marca-manual { background: linear-gradient(135deg, var(--texto) 0 5px, var(--superficie-2) 5px); border: 1px solid var(--borde-fuerte); }
+
+/* ── Iconos de ayuda «i» (encargo 7) ── */
+.ayuda {
+  display: inline-grid; place-items: center; width: 15px; height: 15px; border-radius: 50%; vertical-align: 1px;
+  background: rgba(59, 91, 240, .12); color: #3B5BF0; font: italic 700 10px/1 Georgia, "Times New Roman", serif;
+  text-transform: none; letter-spacing: 0; cursor: help; margin-left: 3px; user-select: none; flex: none;
+}
+.ayuda:hover, .ayuda:focus-visible { background: #3B5BF0; color: #fff; outline: none; }
+.kpi.heroe .ayuda { background: rgba(255, 255, 255, .16); color: #fff; }
+.burbuja-ayuda {
+  position: fixed; z-index: 1000; max-width: 280px; padding: 9px 12px; border-radius: 10px;
+  background: #141A3A; color: #fff; font: 500 12px/1.45 var(--letra); text-transform: none; letter-spacing: 0;
+  box-shadow: 0 12px 30px -10px rgba(10, 14, 40, .5); pointer-events: none;
+}
+.burbuja-ayuda::before {
+  content: ""; position: absolute; top: -5px; left: var(--flecha, 50%); width: 10px; height: 10px; margin-left: -5px;
+  background: #141A3A; transform: rotate(45deg); border-radius: 2px;
+}
+.burbuja-ayuda.invertida::before { top: auto; bottom: -5px; }
+.fila-regimen { display: flex; align-items: center; gap: 4px; }

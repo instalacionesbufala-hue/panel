@@ -1,13 +1,14 @@
 // Entrada del panel: navegación, pantalla de acceso y aviso de conexión.
-import * as api from './api.js?v=24';
-import { mesActual, avisar } from './ui.js?v=24';
-import * as unidades from './unidades.js?v=24';
-import * as combustible from './combustible.js?v=24';
-import * as costes from './costes.js?v=24';
-import * as maestros from './tecnicos.js?v=24';
-import * as liquidacion from './liquidacion.js?v=24';
-import * as ausencias from './ausencias.js?v=24';
-import * as configuracion from './configuracion.js?v=24';
+import * as api from './api.js?v=25';
+import { mesActual, avisar } from './ui.js?v=25';
+import { activarAyudas } from './ayudas.js?v=25';
+import * as unidades from './unidades.js?v=25';
+import * as combustible from './combustible.js?v=25';
+import * as costes from './costes.js?v=25';
+import * as maestros from './tecnicos.js?v=25';
+import * as liquidacion from './liquidacion.js?v=25';
+import * as ausencias from './ausencias.js?v=25';
+import * as configuracion from './configuracion.js?v=25';
 
 const VISTAS = { unidades, combustible, costes, ausencias, maestros, liquidacion, configuracion };
 const VISTA_INICIAL = 'unidades';
@@ -59,6 +60,7 @@ $('#form-acceso').addEventListener('submit', async ev => {
 });
 
 api.alPedirAcceso(pedirAcceso);
+activarAyudas();
 
 // ── Contador de facturas pendientes en la pestaña «Combustible» ──
 // Se actualiza con cada lectura de panelCompras (al entrar y tras cada asignación o clasificación).

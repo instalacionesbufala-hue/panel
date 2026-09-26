@@ -1,7 +1,8 @@
 // Pantalla de ausencias: sustituye a escribir a mano en «⏱️ Ausencias» del Sheets.
 // Se lee el año entero una vez (para el saldo de vacaciones) y el mes se filtra aquí.
-import * as api from './api.js?v=24';
-import { esc, fecha, hoy, mesActual, nombreMes, avisar, preguntar, cajaError, listaAvisos } from './ui.js?v=24';
+import * as api from './api.js?v=25';
+import { ayuda, AYUDA } from './ayudas.js?v=25';
+import { esc, fecha, hoy, mesActual, nombreMes, avisar, preguntar, cajaError, listaAvisos } from './ui.js?v=25';
 
 // Días de vacaciones al año según convenio (BACKEND.md). Solo sirve para enseñar cuántos quedan.
 const VACACIONES_ANUALES = 22;
@@ -175,7 +176,7 @@ export function montar(el) {
         <span class="empuje"></span>
         <label>Mes<input type="month" id="mes" value="${esc(mes)}" required></label>
       </div>
-      <div class="caja-aviso aviso-holded"><div><strong>Las ausencias se registran en Holded.</strong> ${NOTA_HOLDED} Aquí se consultan; solo lo excepcional se añade a mano.</div>
+      <div class="caja-aviso aviso-holded"><div><strong>Las ausencias se registran en Holded.</strong> ${ayuda(AYUDA.ausencias)} ${NOTA_HOLDED} Aquí se consultan; solo lo excepcional se añade a mano.</div>
         ${datos ? '<button class="boton secundario" data-accion="nueva">Añadir ausencia fuera de Holded</button>' : ''}</div>`;
     if (cargando && !datos) { el.innerHTML = cabecera + '<p class="cargando">Cargando ausencias…</p>'; return; }
     if (errorCarga && !datos) {
@@ -204,7 +205,7 @@ export function montar(el) {
       <section class="bloque">
         <h2>Ausencias de ${esc(nombreMes(mes))}</h2>
         <div class="tabla-scroll"><table>
-          <thead><tr><th>Técnico</th><th>Equipo</th><th>Motivo</th><th>Desde</th><th>Hasta</th><th class="num">Días laborables</th><th>Notas</th><th></th></tr></thead>
+          <thead><tr><th>Técnico</th><th>Equipo</th><th>Motivo</th><th>Desde</th><th>Hasta</th><th class="num">Días laborables ${ayuda(AYUDA.diasLaborables)}</th><th>Notas</th><th></th></tr></thead>
           <tbody>${lista.map(a => `<tr>
             <td><strong>${esc(a.tecnico || nombreTec(a.idTecnico))}</strong>${a.idTecnico ? '' : ' <span class="insignia error" title="El nombre de la hoja no coincide con ningún empleado. Corrígela eligiendo el técnico.">sin casar</span>'}
               ${esHolded(a) ? '<span class="insignia holded" title="Se gestiona en Holded">Holded</span>' : '<span class="insignia" title="Añadida a mano en el panel">fuera de Holded</span>'}</td><td>${a.equipo ? esc(a.equipo) : a.idTecnico ? '<span class="insignia" title="SAT o Gerencia: no cuenta en la capacidad de ninguna brigada">Fuera de brigada</span>' : '—'}</td>
@@ -222,7 +223,7 @@ export function montar(el) {
         <h2>Resumen de ${esc(anio)}</h2>
         <p class="tenue">Días laborables por técnico. Vacaciones: ${VACACIONES_ANUALES} al año según convenio. Una ausencia cuenta en el año en que empieza.</p>
         <div class="tabla-scroll"><table>
-          <thead><tr><th>Técnico</th><th class="num">Vacaciones disfrutadas</th><th class="num">Le quedan</th><th>Otras ausencias</th></tr></thead>
+          <thead><tr><th>Técnico</th><th class="num">Vacaciones disfrutadas</th><th class="num">Le quedan ${ayuda(AYUDA.vacacionesQuedan)}</th><th>Otras ausencias</th></tr></thead>
           <tbody>${tecnicos().map(t => {
             const r = resumen.get(t.id) || { vacaciones: 0, otros: new Map() };
             const quedan = VACACIONES_ANUALES - r.vacaciones;

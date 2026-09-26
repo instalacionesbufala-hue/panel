@@ -1,25 +1,23 @@
 // Maestros: técnicos, vehículos y unidades. Nunca se borra nada: se da de baja con fecha.
-import * as api from './api.js?v=24';
-import { esc, eur, fecha, hoy, vigente, leerImporte, importeEditable, avisar, preguntar, cajaError, listaAvisos } from './ui.js?v=24';
+import * as api from './api.js?v=25';
+import { ayuda, AYUDA } from './ayudas.js?v=25';
+import { esc, eur, fecha, hoy, vigente, leerImporte, importeEditable, avisar, preguntar, cajaError, listaAvisos } from './ui.js?v=25';
 
 export function montar(el) {
   let cfg = null;
   let errorCarga = null;
   let verBajas = false;
-  // En producción, panelGuardarConfig solo acepta asignaciones: rechaza altas, bajas y ediciones de
-  // técnicos, vehículos y unidades (BACKEND.md v3.20.22). Mientras tanto esos botones van desactivados.
-  let maestrosProximamente = false;
+  // Altas y bajas en producción desde Panel_Config v1.5 (26/09/2026). Se envía solo lo que el backend
+  // espera de cada cosa; el resto de campos de panelConfig (rol, activo, origen…) no se reenvía.
 
   async function recargar() {
     errorCarga = null;
-    try {
-      cfg = await api.leerConfig();
-      maestrosProximamente = (await api.accionesEnProduccion()).has('panelGuardarConfig');
-    } catch (e) { errorCarga = e; }
+    try { cfg = await api.leerConfig(); } catch (e) { errorCarga = e; }
     pintar();
   }
-  const PROXIMAMENTE = 'Próximamente: el servidor todavía no admite altas, bajas ni cambios en técnicos, vehículos y unidades.';
-  const bloqueo = () => maestrosProximamente ? `disabled title="${PROXIMAMENTE}"` : '';
+  // Los vehículos del bloque de costes de estructura (T-Cross) no se cambian aquí, sino en Costes
+  const vehiculoDeEstructura = v => /configuraci/i.test(String(v.origen || ''));
+  const EN_COSTES = 'Este vehículo sale de los costes de estructura: se cambia en Costes, no aquí.';
 
   // Abre un formulario en el diálogo; si el servidor rechaza, se vuelve a abrir con lo escrito.
   async function formulario(titulo, campos, valores, construir, textoAceptar = 'Guardar') {
@@ -34,7 +32,9 @@ export function montar(el) {
       try {
         const r = await api.guardarConfig(cambios);
         listaAvisos(r.avisos);
-        const nuevos = [...(r.ids?.tecnicos || []), ...(r.ids?.unidades || [])];
+        // ids: [{ nombre, id }] (v1.5); se aceptan también textos sueltos
+        const nuevos = [...(r.ids?.tecnicos || []), ...(r.ids?.unidades || [])]
+          .map(x => typeof x === 'string' ? x : x.nombre && x.id && x.nombre !== x.id ? `${x.nombre} → ${x.id}` : (x.id || x.nombre));
         avisar(nuevos.length ? `Guardado. Identificador asignado por el servidor: ${nuevos.join(', ')}.` : 'Guardado.');
         await recargar();
         return true;
@@ -53,16 +53,20 @@ export function montar(el) {
 
   function altaTecnico() {
     return formulario('Alta de técnico',
-      v => '<p class="tenue">El identificador lo asigna el servidor al guardar.</p>' + campo('nombre', 'Nombre y apellidos', v.nombre, 'required') +
-        campo('grupo', 'Grupo profesional', v.grupo) + campoFecha('alta', 'Fecha de alta', v.alta),
+      v => '<p class="tenue">El identificador (E09, E10…) lo asigna el servidor al guardar. Entra con rol «Instalador». El coste mensual se pone después en «Costes de personal».</p>'
+        + campo('nombre', 'Nombre y apellidos', v.nombre, 'required') + campo('grupo', 'Grupo profesional', v.grupo) + campoFecha('alta', 'Fecha de alta', v.alta),
       { alta: hoy() },
-      v => ({ tecnicos: [{ nombre: v.nombre.trim(), grupo: v.grupo.trim(), alta: v.alta, baja: null }] }), 'Dar de alta');
+      v => {
+        const nombre = v.nombre.trim();
+        if (cfg.tecnicos.some(t => String(t.nombre).trim().toLowerCase() === nombre.toLowerCase())) return `Ya hay un técnico llamado «${nombre}».`;
+        return { tecnicos: [{ nombre, grupo: v.grupo.trim(), alta: v.alta, baja: null }] };
+      }, 'Dar de alta');
   }
   function editarTecnico(t) {
     return formulario(`Editar ${t.nombre}`,
       v => campo('nombre', 'Nombre y apellidos', v.nombre, 'required') + campo('grupo', 'Grupo profesional', v.grupo) + campoFecha('alta', 'Fecha de alta', v.alta),
       { nombre: t.nombre, grupo: t.grupo, alta: t.alta },
-      v => ({ tecnicos: [{ ...t, nombre: v.nombre.trim(), grupo: v.grupo.trim(), alta: v.alta }] }));
+      v => ({ tecnicos: [{ id: t.id, nombre: v.nombre.trim(), grupo: v.grupo.trim(), alta: v.alta }] }));
   }
   function bajaTecnico(t) {
     const asignado = cfg.asignaciones.some(a => a.idTec === t.id && vigente(a.desde, a.hasta, hoy()));
@@ -71,7 +75,7 @@ export function montar(el) {
         ${asignado ? '<p class="caja-aviso">Ahora mismo está asignado a una unidad. El servidor decidirá si cierra también esa asignación.</p>' : ''}
         ${campoFecha('baja', 'Fecha de baja', v.baja)}`,
       { baja: hoy() },
-      v => (v.baja < t.alta ? 'La fecha de baja no puede ser anterior al alta.' : { tecnicos: [{ ...t, baja: v.baja }] }),
+      v => (v.baja < t.alta ? 'La fecha de baja no puede ser anterior al alta.' : { tecnicos: [{ id: t.id, baja: v.baja }] }),
       'Dar de baja');
   }
 
@@ -96,14 +100,14 @@ export function montar(el) {
       v => {
         const renting = leerImporte(v.rentingMes);
         if (Number.isNaN(renting)) return 'El importe del renting no es un número válido.';
-        return { vehiculos: [{ ...x, modelo: v.modelo.trim(), rentingMes: renting, desde: v.desde }] };
+        return { vehiculos: [{ matricula: x.matricula, modelo: v.modelo.trim(), rentingMes: renting, desde: v.desde, hasta: x.hasta ?? null }] };
       });
   }
   function bajaVehiculo(x) {
     return formulario(`Dar de baja ${x.matricula}`,
       v => `<p>El vehículo deja de estar en servicio a partir de esta fecha (último día incluido). Su histórico se conserva.</p>${campoFecha('hasta', 'Fecha de baja', v.hasta)}`,
       { hasta: hoy() },
-      v => (x.desde && v.hasta < x.desde ? 'La fecha de baja no puede ser anterior a la de alta.' : { vehiculos: [{ ...x, hasta: v.hasta }] }),
+      v => (x.desde && v.hasta < x.desde ? 'La fecha de baja no puede ser anterior a la de alta.' : { vehiculos: [{ matricula: x.matricula, modelo: x.modelo, rentingMes: x.rentingMes, desde: x.desde, hasta: v.hasta }] }),
       'Dar de baja');
   }
 
@@ -122,18 +126,14 @@ export function montar(el) {
         return { unidades: [{ nombre, tipo: v.tipo }] };
       }, 'Crear');
   }
-  function editarUnidad(u) {
-    return formulario(`Renombrar ${u.nombre}`, v => campo('nombre', 'Nombre', v.nombre, 'required'), { nombre: u.nombre },
-      v => ({ unidades: [{ ...u, nombre: v.nombre.trim() }] }));
-  }
   function bajaUnidad(u) {
     const ocupada = cfg.asignaciones.some(a => a.idUnidad === u.id && vigente(a.desde, a.hasta, hoy()));
     return formulario(`Dar de baja ${u.nombre}`,
       v => `<p>La unidad deja de estar activa desde esta fecha. Su histórico se conserva y se puede seguir consultando.</p>
-        ${ocupada ? '<p class="caja-aviso">Tiene técnicos o vehículo asignados hoy. Conviene vaciarla antes en «Unidades».</p>' : ''}
+        ${ocupada ? '<p class="caja-aviso">Tiene técnicos o vehículo asignados hoy. El servidor solo la da de baja si no le quedan técnicos después de esa fecha: vacíala antes en «Unidades».</p>' : ''}
         ${campoFecha('hasta', 'Último día activa', v.hasta)}`,
       { hasta: hoy() },
-      v => ({ unidades: [{ ...u, activa: false, hasta: v.hasta }] }),
+      v => ({ unidades: [{ id: u.id, activa: false, hasta: v.hasta }] }),
       'Dar de baja');
   }
 
@@ -150,9 +150,10 @@ export function montar(el) {
     const estado = (desde, hasta) => desde && desde > d ? '<span class="insignia aviso">próxima alta</span>'
       : hasta && hasta < d ? `<span class="insignia">baja ${fecha(hasta)}</span>`
       : hasta ? `<span class="insignia aviso">baja el ${fecha(hasta)}</span>` : '<span class="insignia ok">activo</span>';
-    const botones = (tipo, id, deBaja) => `<div class="botones-tipo">
-      <button class="boton secundario mini" data-accion="editar" data-tipo="${tipo}" data-id="${esc(id)}" ${bloqueo()}>Editar</button>
-      ${deBaja ? '' : `<button class="boton peligro mini" data-accion="baja" data-tipo="${tipo}" data-id="${esc(id)}" ${bloqueo()}>Dar de baja</button>`}</div>`;
+    // Las unidades no se renombran (el nombre es su identificador); los vehículos de estructura, en Costes
+    const botones = (tipo, id, deBaja, bloqueado = '') => bloqueado ? `<span class="tenue" title="${esc(bloqueado)}">Se cambia en Costes</span>` : `<div class="botones-tipo">
+      ${tipo === 'uni' ? '' : `<button class="boton secundario mini" data-accion="editar" data-tipo="${tipo}" data-id="${esc(id)}">Editar</button>`}
+      ${deBaja ? '' : `<button class="boton peligro mini" data-accion="baja" data-tipo="${tipo}" data-id="${esc(id)}">Dar de baja</button>`}</div>`;
 
     el.innerHTML = `
       <div class="barra">
@@ -160,12 +161,11 @@ export function montar(el) {
         <label class="empuje" style="display:flex;align-items:center;gap:.4rem;min-width:0"><input type="checkbox" id="ver-bajas" ${verBajas ? 'checked' : ''} style="min-height:0"> Mostrar bajas</label>
       </div>
       ${errorCarga ? cajaError(errorCarga, 'No se ha podido actualizar') : ''}
-      ${maestrosProximamente ? `<div class="caja-aviso"><strong>Solo consulta, por ahora.</strong> ${PROXIMAMENTE} Las asignaciones de técnicos y furgonetas a unidades ya se guardan desde «Unidades».</div>` : ''}
 
       <section class="bloque">
-        <div class="barra" style="align-items:center"><h2 style="margin:0">Técnicos</h2><span class="empuje"></span><button class="boton" data-accion="alta" data-tipo="tec" ${bloqueo()}>Alta de técnico</button></div>
+        <div class="barra" style="align-items:center"><h2 style="margin:0">Técnicos</h2><span class="empuje"></span><button class="boton" data-accion="alta" data-tipo="tec">Alta de técnico</button></div>
         <div class="tabla-scroll"><table>
-          <thead><tr><th>Id.</th><th>Nombre</th><th>Rol</th><th>Grupo</th><th>Alta</th><th>Estado</th><th></th></tr></thead>
+          <thead><tr><th>Id.</th><th>Nombre</th><th>Rol ${ayuda(AYUDA.rol)}</th><th>Grupo ${ayuda(AYUDA.grupo)}</th><th>Alta</th><th>Estado</th><th></th></tr></thead>
           <tbody>${tecs.map(t => `<tr class="${t.baja && t.baja < d ? 'baja' : ''}">
             <td>${esc(t.id)}</td><td>${esc(t.nombre)}</td><td>${esc(t.rol || '')}</td><td>${esc(t.grupo || '—')}</td><td>${fecha(t.alta)}</td>
             <td>${estado(t.alta, t.baja)}</td><td>${botones('tec', t.id, !!t.baja)}</td></tr>`).join('') || '<tr><td colspan="7" class="vacio">No hay técnicos.</td></tr>'}</tbody>
@@ -173,17 +173,17 @@ export function montar(el) {
       </section>
 
       <section class="bloque">
-        <div class="barra" style="align-items:center"><h2 style="margin:0">Vehículos</h2><span class="empuje"></span><button class="boton" data-accion="alta" data-tipo="veh" ${bloqueo()}>Alta de vehículo</button></div>
+        <div class="barra" style="align-items:center"><h2 style="margin:0">Vehículos</h2><span class="empuje"></span><button class="boton" data-accion="alta" data-tipo="veh">Alta de vehículo</button></div>
         <div class="tabla-scroll"><table>
-          <thead><tr><th>Matrícula</th><th>Modelo</th><th>Brigada hoy</th><th class="num">Renting/mes</th><th>Desde</th><th>Estado</th><th></th></tr></thead>
+          <thead><tr><th>Matrícula</th><th>Modelo</th><th>Brigada hoy ${ayuda(AYUDA.brigadaHoy)}</th><th class="num">Renting/mes</th><th>Desde</th><th>Estado</th><th></th></tr></thead>
           <tbody>${vehs.map(v => `<tr class="${v.hasta && v.hasta < d ? 'baja' : ''}">
             <td>${esc(v.matricula)}${v.sinMatricula ? ' <span class="insignia aviso" title="El recurso no tiene matrícula legible: se usa su código interno">sin matrícula</span>' : ''}</td><td>${esc(v.modelo || '')}</td><td>${esc(v.brigada || '—')}</td><td class="num">${eur(v.rentingMes)}</td><td>${fecha(v.desde)}</td>
-            <td>${estado(v.desde, v.hasta)}</td><td>${botones('veh', v.matricula, !!v.hasta)}</td></tr>`).join('') || '<tr><td colspan="7" class="vacio">No hay vehículos.</td></tr>'}</tbody>
+            <td>${estado(v.desde, v.hasta)}</td><td>${botones('veh', v.matricula, !!v.hasta, vehiculoDeEstructura(v) ? EN_COSTES : '')}</td></tr>`).join('') || '<tr><td colspan="7" class="vacio">No hay vehículos.</td></tr>'}</tbody>
         </table></div>
       </section>
 
       <section class="bloque">
-        <div class="barra" style="align-items:center"><h2 style="margin:0">Unidades</h2><span class="empuje"></span><button class="boton" data-accion="alta" data-tipo="uni" ${bloqueo()}>Nueva unidad</button></div>
+        <div class="barra" style="align-items:center"><h2 style="margin:0">Unidades</h2><span class="empuje"></span><button class="boton" data-accion="alta" data-tipo="uni">Nueva unidad</button></div>
         <div class="tabla-scroll"><table>
           <thead><tr><th>Id.</th><th>Nombre</th><th>Tipo</th><th>Estado</th><th></th></tr></thead>
           <tbody>${unis.map(u => `<tr class="${u.activa === false ? 'baja' : ''}">
@@ -200,14 +200,14 @@ export function montar(el) {
     if (!b) return;
     const { accion, tipo, id } = b.dataset;
     if (accion === 'recargar') return recargar();
-    if (maestrosProximamente) return avisar(PROXIMAMENTE, 'aviso');
     const buscar = { tec: () => cfg.tecnicos.find(t => t.id === id), veh: () => cfg.vehiculos.find(v => v.matricula === id), uni: () => cfg.unidades.find(u => u.id === id) }[tipo];
     const acciones = {
       alta: { tec: altaTecnico, veh: altaVehiculo, uni: altaUnidad },
-      editar: { tec: editarTecnico, veh: editarVehiculo, uni: editarUnidad },
+      editar: { tec: editarTecnico, veh: editarVehiculo },
       baja: { tec: bajaTecnico, veh: bajaVehiculo, uni: bajaUnidad },
     };
-    acciones[accion][tipo](accion === 'alta' ? undefined : buscar());
+    const hacer = acciones[accion]?.[tipo];
+    if (hacer) hacer(accion === 'alta' ? undefined : buscar());
   }
   function alCambiar(ev) {
     if (ev.target.id === 'ver-bajas') { verBajas = ev.target.checked; pintar(); }

@@ -603,18 +603,19 @@ function demoResponder(accion, params, p) {
       const nuevas = p.asignaciones || [];
       const ids = nuevas.filter(a => a.idTec && a.idUnidad).map(a => a.idTec);
       if (new Set(ids).size !== ids.length) return { ok: false, error: 'Un técnico aparece en dos unidades el mismo día.' };
-      const poner = (lista, clave, o) => { const i = lista.findIndex(x => x[clave] === o[clave]); if (i >= 0) lista[i] = o; else lista.push(o); };
+      // Como el backend: una edición o baja trae solo los campos que cambian y se mezclan con lo que había
+      const poner = (lista, clave, o) => { const i = lista.findIndex(x => x[clave] === o[clave]); if (i >= 0) lista[i] = { ...lista[i], ...o }; else lista.push(o); };
       // Las altas llegan sin id: lo asigna el backend y lo devuelve
       const asignados = { tecnicos: [], unidades: [] };
       const siguiente = (lista, pref, cifras) => pref + String(Math.max(0, ...lista.map(x => Number(String(x.id).replace(/\D/g, '')) || 0)) + 1).padStart(cifras, '0');
-      for (const t of p.tecnicos || []) { if (!t.id) { t.id = siguiente(demo.tecnicos, 'T', 2); asignados.tecnicos.push(t.id); } poner(demo.tecnicos, 'id', t); }
+      for (const t of p.tecnicos || []) { if (!t.id) { t.id = siguiente(demo.tecnicos, 'T', 2); t.rol = t.rol || 'Instalador'; asignados.tecnicos.push({ nombre: t.nombre, id: t.id }); } poner(demo.tecnicos, 'id', t); }
       (p.vehiculos || []).forEach(v => poner(demo.vehiculos, 'matricula', v));
       // Como el backend, el id de una unidad nueva es su nombre (sin repetir)
       for (const u of p.unidades || []) {
         if (!u.id) {
           // Como el backend: el id es el nombre, no se repite, y computaVariable se deriva del nombre
           if (demo.unidades.some(x => x.id === u.nombre)) return { ok: false, rechazado: true, accion, error: `Ya existe la unidad «${u.nombre}».` };
-          u.id = u.nombre; asignados.unidades.push(u.id);
+          u.id = u.nombre; asignados.unidades.push({ nombre: u.nombre, id: u.id });
           poner(demo.unidades, 'id', { tipo: 'productiva', activa: true, computaVariable: /^Búfala \d+$/.test(u.nombre), ...u });
           continue;
         }

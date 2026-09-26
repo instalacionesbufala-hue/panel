@@ -1,7 +1,8 @@
 // Pantalla de combustible: asignar cada gasto de vehículo (combustible, renting, mantenimiento) a su matrícula.
-import * as api from './api.js?v=24';
-import { esc, eur, fecha, mesActual, sumarMeses, nombreMes, avisar, cajaError, selectorMes } from './ui.js?v=24';
-import { abrirVisor, valorTipo, etiquetaTipo, tiposConEquipos, textoReparto } from './visor.js?v=24';
+import * as api from './api.js?v=25';
+import { esc, eur, fecha, mesActual, sumarMeses, nombreMes, avisar, cajaError, selectorMes } from './ui.js?v=25';
+import { ayuda, AYUDA } from './ayudas.js?v=25';
+import { abrirVisor, valorTipo, etiquetaTipo, tiposConEquipos, textoReparto } from './visor.js?v=25';
 
 const SIN = '';
 // Gasto imputado a Estructura sin vehículo concreto (BACKEND.md v3.20.24): cuenta como asignado
@@ -160,7 +161,7 @@ export function montar(el) {
       ${errorGuardado ? cajaError(errorGuardado, 'El servidor no ha aceptado las asignaciones') : ''}
 
       <section class="bloque">
-        <h2>Resumen por vehículo · ${esc(nombreMes(mes))}</h2>
+        <h2>Resumen por vehículo · ${esc(nombreMes(mes))} ${ayuda(AYUDA.resumenVehiculo)}</h2>
         <p class="tenue">Puedes arrastrar una factura sobre la tarjeta de su vehículo.</p>
         <div class="resumen-vehiculos">
           ${matriculas.map(m => {
@@ -195,7 +196,7 @@ export function montar(el) {
       </section>
 
       ${deEquipos.length ? `<section class="bloque">
-        <h2>Material y herramienta · ${esc(nombreMes(mes))}</h2>
+        <h2>Material y herramienta · ${esc(nombreMes(mes))} ${ayuda(AYUDA.materialHerramienta)}</h2>
         <p class="tenue">Compras que pueden cargarse a los equipos, a partes iguales en el mes de la factura. Ábrelas para cambiar el tipo o los equipos.</p>
         <div class="tabla-scroll"><table>
           <thead><tr><th>Fecha</th><th>Proveedor</th><th>Tipo</th><th class="num">Importe sin IVA</th><th>Equipos</th><th></th></tr></thead>
@@ -211,7 +212,7 @@ export function montar(el) {
       </section>` : ''}
 
       ${porProveedor.size ? `<section class="bloque">
-        <h2>Facturas sin clasificar</h2>
+        <h2>Facturas sin clasificar ${ayuda(AYUDA.sinClasificar)}</h2>
         <p class="tenue">Abre cada factura para verla y clasificarla. Si todas las de un proveedor son del mismo tipo, aplícalo al proveedor entero y sus próximas facturas entrarán solas.</p>
         ${[...porProveedor].map(([p, d]) => `<div class="grupo-proveedor">
           <div class="grupo-cabecera">
@@ -243,7 +244,7 @@ export function montar(el) {
     if (p.sinClasificar) partes.push(`<strong>${p.sinClasificar}</strong> sin clasificar`);
     const chip = (m, texto) => `<button class="boton secundario mini${m === mes ? ' actual' : ''}" data-accion="ir-mes" data-mes="${esc(m)}" ${m === mes ? 'aria-current="true"' : ''}>${esc(nombreMes(m))} · ${texto}</button>`;
     return `<div class="caja-aviso pendientes">
-      <p style="margin:0 0 .5rem">${partes.join(' · ')}${p.desde ? ` <span class="tenue">desde ${esc(nombreMes(p.desde))}</span>` : ''}.</p>
+      <p style="margin:0 0 .5rem">${partes.join(' · ')}${p.desde ? ` <span class="tenue">desde ${esc(nombreMes(p.desde))}</span>` : ''}. ${ayuda(AYUDA.pendientes)}</p>
       <div class="botones-tipo">
         ${(p.porMes || []).map(x => chip(x.mes, `${x.n} sin asignar (${eur(x.importeSinIva)})`)).join('')}
         ${(p.sinClasificarPorMes || []).map(x => chip(x.mes, `${x.n} sin clasificar`)).join('')}

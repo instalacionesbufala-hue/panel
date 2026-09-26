@@ -2,6 +2,35 @@
 
 **El contrato vive en [`BACKEND.md`](BACKEND.md)**, lo mantiene el backend y manda sobre este fichero. Aquí queda lo que decide el panel por su cuenta y lo que el panel pregunta. Revisado contra BACKEND.md **v3.20.40** el 26/09/2026.
 
+## Altas y bajas de técnicos, vehículos y unidades en producción — hecho (Panel_Config v1.5)
+
+- «Técnicos y vehículos» deja de ser de solo consulta: se quitan el «próximamente» y los botones desactivados.
+- Se envía **solo lo que espera el backend** en cada caso (antes se reenviaba el objeto entero de `panelConfig`):
+  - técnico: alta `{ nombre, grupo, alta, baja: null }` (sin `id`), edición `{ id, nombre, grupo, alta }`, baja `{ id, baja }`;
+  - vehículo: `{ matricula, modelo, rentingMes, desde, hasta }`;
+  - unidad: alta `{ nombre, tipo }`, baja `{ id, activa: false, hasta }`.
+- **Ajustes del panel:**
+  - El alta de técnico avisa si el nombre ya existe antes de enviarlo, y explica que entra como «Instalador» y que el coste se pone en «Costes de personal».
+  - Las unidades **ya no se pueden renombrar** (el backend lo rechaza: el nombre es su id); solo se dan de baja. El formulario de baja explica que el servidor no la da si le quedan técnicos después de esa fecha.
+  - Los vehículos del bloque de costes de estructura (`origen` con «Configuración», como el T-Cross) no tienen botones: «Se cambia en Costes».
+  - `ids` llega como `[{ nombre, id }]`: el aviso dice «Nuevo Técnico → E09». Si llegaran textos sueltos, también se enseñan.
+- Comprobado con el simulador local: alta con nombre repetido rechazada, alta nueva con su identificador y baja de técnico.
+
+## Iconos de ayuda «i» — hecho (encargo 7)
+
+`js/ayudas.js`: un círculo de 15 px con una «i» en cursiva y una ventana flotante `#141A3A` (máx. 280 px, flecha, `role="tooltip"`).
+- **Accesibilidad:** se abre al pasar el ratón, al enfocar con el teclado (`tabindex="0"`, Intro o espacio la fija, Escape la cierra) o al tocar. Tocar el icono no dispara lo que haya debajo, por ejemplo el botón de régimen.
+- **Posición:** la ventana es única y de posición fija sobre la ventana del navegador, así que no la recortan los contenedores con scroll. Dentro de un diálogo se coloca en su capa. Si no cabe debajo, sale encima, y acompaña al icono al desplazar la página.
+- **Textos obligatorios del encargo:** régimen, ausencias, precios y dato manual, tal cual. Rendimiento, aprovechamiento y tiempo medio se usan en la página de la Dirección para las columnas por equipo y para los indicadores que no traigan `formula`. En la Dirección, cada indicador enseña su `formula` y, si `datoManual`, «Este dato no lo registra el sistema».
+- **Dónde hay iconos:**
+  - Unidades: resumen del día, régimen y no productivas.
+  - Combustible: resumen por vehículo, pendientes, material y herramienta, sin clasificar.
+  - Costes: coste de empresa.
+  - Ausencias: aviso de Holded, días laborables, vacaciones que quedan.
+  - Técnicos: rol, grupo, brigada hoy.
+  - Liquidación: obras, margen, tramo, variable.
+  - Configuración: festivos, precios, coste por unidad.
+
 ## Festivos de solo consulta y ausencias de SAT/Gerencia — hecho (encargo 6, v3.20.40)
 
 - **Festivos en «Configuración»: solo consulta.** Se quitan el alta, la corrección y el borrado, y queda la lista con el selector de año, más la nota «Los festivos se gestionan en el calendario laboral de Holded». Los que llegan con `ambito: "Holded"` llevan la etiqueta «Holded».
@@ -154,7 +183,7 @@ Ninguna por ahora. Resueltas por BACKEND.md v3.20.30:
 - **Sesión caducada en la Dirección:** `{ ok:false, codigo:"sesion" }`, como en el panel. Los testigos del panel y de la Dirección no sirven el uno para el otro.
 - **Porcentajes:** llegan como fracción con `unidad: "%"`, y `valor` es `null` cuando `datoManual: true`. Es como ya lo trataba el panel.
 
-Pendiente del backend: altas y bajas de técnicos, vehículos y unidades dentro de `panelGuardarConfig`, y `panelLiquidacion`.
+Pendiente del backend: `panelLiquidacion`.
 
 ## Resueltas por BACKEND.md (23/09/2026, tarde) — hecho
 

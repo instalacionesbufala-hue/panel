@@ -1,6 +1,7 @@
 // Pantalla de configuración: festivos (solo consulta: mandan en Holded) y precios de coste de material (editables).
-import * as api from './api.js?v=24';
-import { esc, eur, fecha, hoy, leerImporte, importeEditable, avisar, preguntar, cajaError, listaAvisos } from './ui.js?v=24';
+import * as api from './api.js?v=25';
+import { ayuda, AYUDA } from './ayudas.js?v=25';
+import { esc, eur, fecha, hoy, leerImporte, importeEditable, avisar, preguntar, cajaError, listaAvisos } from './ui.js?v=25';
 
 const DIAS = ['domingo', 'lunes', 'martes', 'miércoles', 'jueves', 'viernes', 'sábado'];
 const diaSemana = iso => new Date(iso + 'T12:00').getDay();
@@ -115,7 +116,7 @@ export function montar(el) {
         <button class="boton" data-accion="guardar-precios" ${lista.length && !guardandoPrecios ? '' : 'disabled'}>${guardandoPrecios ? 'Guardando…' : 'Guardar cambios'}</button>
       </div>
       <div class="tabla-scroll"><table class="tabla-precios">
-        <thead><tr><th>Id.</th><th>Concepto</th><th class="num">Coste €/ud</th><th>Notas</th></tr></thead>
+        <thead><tr><th>Id.</th><th>Concepto</th><th class="num">Coste €/ud ${ayuda(AYUDA.costeUnidad)}</th><th>Notas</th></tr></thead>
         ${familias.map(f => `<tbody>
           <tr class="familia"><th colspan="4">${esc(f.titulo)}</th></tr>
           ${(f.conceptos || []).map(c => {
@@ -138,14 +139,14 @@ export function montar(el) {
       <div class="barra"><div><h1>Configuración</h1><p class="tenue">Festivos (solo consulta) y precios de coste de material. Los precios que guardes aquí sustituyen a escribir en ⚙️ Configuración del Sheets.</p></div></div>
       <section class="bloque">
         <div class="barra" style="align-items:end;margin-bottom:.75rem">
-          <div><h2 style="margin:0">Festivos</h2><p class="tenue" style="margin:0">Cuentan para los días laborables de capacidad, rendimiento y ausencias.</p></div>
+          <div><h2 style="margin:0">Festivos ${ayuda(AYUDA.festivos)}</h2><p class="tenue" style="margin:0">Cuentan para los días laborables de capacidad, rendimiento y ausencias.</p></div>
           <span class="empuje"></span>
           <label>Año<select id="anio">${[...new Set([-1, 0, 1].map(d => String(Number(hoy().slice(0, 4)) + d)).concat(anio))].sort().map(a => `<option ${a === anio ? 'selected' : ''}>${a}</option>`).join('')}</select></label>
         </div>
         ${bloqueFestivos()}
       </section>
       <section class="bloque">
-        <h2>Precios de coste de material</h2>
+        <h2>Precios de coste de material ${ayuda(AYUDA.precios)}</h2>
         ${bloquePrecios()}
       </section>`;
     if (activo) {

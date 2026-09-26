@@ -1,6 +1,7 @@
 // Liquidación mensual: solo lectura. El cálculo lo hace el backend; aquí solo se muestra.
-import * as api from './api.js?v=24';
-import { esc, eur, mesActual, nombreMes, cajaError, selectorMes } from './ui.js?v=24';
+import * as api from './api.js?v=25';
+import { ayuda, AYUDA } from './ayudas.js?v=25';
+import { esc, eur, mesActual, nombreMes, cajaError, selectorMes } from './ui.js?v=25';
 
 export function montar(el) {
   let mes = mesActual();
@@ -45,8 +46,8 @@ export function montar(el) {
       </div>
       <div class="tabla-scroll"><table>
         <thead><tr>
-          <th>Técnico</th><th>Unidad</th><th class="num">Obras</th><th class="num">Ingresos</th><th class="num">Material</th>
-          <th class="num">Coste técnico</th><th class="num">Coste vehículo</th><th class="num">Margen</th><th>Tramo</th><th class="num">Variable</th>
+          <th>Técnico</th><th>Unidad</th><th class="num">Obras ${ayuda(AYUDA.obras)}</th><th class="num">Ingresos</th><th class="num">Material</th>
+          <th class="num">Coste técnico</th><th class="num">Coste vehículo</th><th class="num">Margen ${ayuda(AYUDA.margen)}</th><th>Tramo ${ayuda(AYUDA.tramo)}</th><th class="num">Variable ${ayuda(AYUDA.variable)}</th>
         </tr></thead>
         <tbody>${filas.map(f => `<tr>
           <td><strong>${esc(f.nombre)}</strong> <span class="tenue">${esc(f.idTec)}</span></td>

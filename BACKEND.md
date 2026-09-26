@@ -154,6 +154,21 @@ Hoy el desplegable solo ofrece los vehículos **vigentes en el mes de la factura
 - **Enseñar siempre las cuatro matrículas actuales** (`vehiculos` con `activo: true`), en cualquier mes, más las que ya tenga asignadas la factura.
 - **Añadir la opción «Estructura (sin vehículo)»**, que se envía como `matricula: "ESTRUCTURA"`. El backend (v3.20.24) la acepta y la imputa a Estructura sin aviso de «sin matrícula». En `panelCompras` vuelve como `matricula: "ESTRUCTURA"`: el panel debe contarla como asignada y rotularla «Estructura».
 
+### ENCARGO NUEVO 7 — Iconos de ayuda «i» en el panel y en la página de la Dirección (26/09/2026 · sin backend)
+
+César lo pidió para el dashboard (ya hecho allí, build 20260926-2100) y lo quiere igual en el panel y en `direccion.html`: una **«i» pequeña** junto a cada KPI, columna y campo de configuración que, al pasar el ratón (o al tocarla / enfocarla con teclado), abre una **ventana flotante** con qué mide y cómo se calcula. Una o dos líneas; sin jerga.
+
+**Referencia visual (la del dashboard):** círculo de 15 px, fondo `rgba(59,91,240,.12)`, «i» en cursiva `#3B5BF0`; ventana flotante `#141A3A`, texto blanco 12 px, máx. 280 px, flecha arriba, `z-index` alto. Accesible: `tabindex="0"`, `role="tooltip"` en la ventana, visible con `:focus`. Que no la recorten los contenedores con `overflow` (usar posición fija o portal si hace falta).
+
+**Textos obligatorios** (el resto, a criterio de Code con el mismo tono):
+- **Rendimiento**: servicios equivalentes ÷ capacidad. Instalación = 1, 2 desde 70 m, 3 desde 120 m (máx. 3); fallida = 1. Capacidad de cada día = mín(servicios/día de la unidad, técnicos presentes).
+- **Aprovechamiento de jornada**: tiempo instalando ÷ jornada fichada en Holded (sin fichaje, la teórica de la unidad). El resto es abastecimiento y desplazamientos.
+- **Tiempo medio por instalación**: del check-in en ESBRAIN al «Finalizar». InstantBox: estimado (envío del cierre − inicio − desplazamiento según km, mín. 30 min). No computan las anómalas (> 2× mediana) ni las incidencias de ESBRAIN.
+- **Régimen de la unidad**: servicios al día y jornada desde una fecha; sin régimen, 2 servicios y 7 h 42 min.
+- **Ausencias**: se registran en Holded y se copian cada mañana; las de SAT y Gerencia no restan capacidad.
+- **Precios de material**: coste por unidad con el que se recalcula el material de cada instalación (col AJ del Registro).
+- **Página de la Dirección**: en cada indicador, el texto de su campo `formula` y, si `datoManual`, «Este dato no lo registra el sistema».
+
 ### ENCARGO NUEVO 6 — Festivos de solo consulta y ausencias de SAT/Gerencia (26/09/2026 · backend v3.20.40)
 
 **Festivos (pestaña «Configuración»).** Decisión de César: manda Holded, así que en el panel **se quitan los botones de alta, edición y borrado de festivos**. La lista queda **de solo consulta** (con selector de año), con una nota: «Los festivos se gestionan en el calendario laboral de Holded». El backend añade solo a la lista los festivos del centro de trabajo que tenga Holded (llegan con `ambito: "Holded"`); los de 2026 ya cargados se conservan. Los **precios de material siguen editables**.

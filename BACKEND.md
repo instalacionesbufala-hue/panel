@@ -115,7 +115,7 @@ Lo que toca a cada lado:
 - **Furgoneta** `{ idTec: null, idUnidad, matricula | null, desde }`: la unidad tiene esa furgoneta desde ese día (`null` = se queda sin furgoneta).
 - **Si una unidad recibe una furgoneta y tenía otra que no se mueve en la misma petición, la anterior queda sin unidad** desde esa fecha, y la respuesta trae el aviso. Así nunca cuenta en dos sitios. Si el panel quiere llevarla a otra unidad, que mande también esa fila.
 - **Todo se valida antes de escribir**: fecha, técnico, unidad y matrícula existentes, y un técnico solo una vez por petición. Si algo falla: `{ ok:false, error }` y **no se escribe nada**.
-- **`tecnicos`, `vehiculos` o `unidades` no vacíos → `{ ok:false, rechazado:true, error }` y no se guarda nada**, tampoco las asignaciones que vinieran con ellos. Las altas y bajas todavía no están: el panel debe dejar esos botones desactivados o con «próximamente».
+- ~~`tecnicos`, `vehiculos` o `unidades` no vacíos → rechazo~~ **Superado (v1.5, 26/09/2026): las altas y bajas ya se guardan; ver «YA EN PRODUCCIÓN … altas y bajas».**
 - **`avisos`** hay que enseñarlos siempre. Además del de la furgoneta sin unidad, puede venir uno sobre la Rentabilidad actual: si un cambio deja una brigada con todas sus asignaciones nuevas, el cálculo antiguo adelanta su alta y prorratea ese mes. Es informativo; la escritura se hace igual.
 - Tras guardar, la caché de `panelConfig` se invalida sola.
 - En `panelConfig`, la asignación `derivada` de una furgoneta (la que sale de `🚚 Recursos`) termina el día antes de su primer movimiento desde el panel. Las filas internas de «furgoneta sin unidad» no se publican.
@@ -153,6 +153,17 @@ Hoy el desplegable solo ofrece los vehículos **vigentes en el mes de la factura
 
 - **Enseñar siempre las cuatro matrículas actuales** (`vehiculos` con `activo: true`), en cualquier mes, más las que ya tenga asignadas la factura.
 - **Añadir la opción «Estructura (sin vehículo)»**, que se envía como `matricula: "ESTRUCTURA"`. El backend (v3.20.24) la acepta y la imputa a Estructura sin aviso de «sin matrícula». En `panelCompras` vuelve como `matricula: "ESTRUCTURA"`: el panel debe contarla como asignada y rotularla «Estructura».
+
+### YA EN PRODUCCIÓN (26/09/2026, Panel_Config v1.5): altas y bajas de técnicos, vehículos y unidades
+
+`panelGuardarConfig` **deja de rechazar** `tecnicos`, `vehiculos` y `unidades`, con el mismo formato que ya mandan los formularios de `js/tecnicos.js`. Se valida todo antes de escribir nada; con un error, `ok:false` + `error` y no se toca nada. Activa los botones que estaban en «próximamente».
+
+- **Técnico sin `id` = alta.** El backend le da el siguiente `ID_EMP` (E09, E10…) y lo devuelve en `ids.tecnicos: [{ nombre, id }]`. Rol por defecto «Instalador». **El coste mensual no va en el alta**: llega un aviso para ponerlo en Costes. Nombre repetido → rechazo.
+- **Técnico con `id`**: edición (`nombre`, `grupo`, `alta`) o **baja** (`baja`). La baja **cierra sus asignaciones abiertas a esa fecha** (aviso).
+- **Vehículo**: alta o edición por `matricula` en 🚚 Recursos (`modelo`, `rentingMes`, `desde`, `hasta`). Con `hasta`, cierra sus filas de furgoneta. Los que vienen del bloque de costes de estructura (T-Cross) **se rechazan aquí**: se cambian en Costes.
+- **Unidad sin `id` = alta** `{ nombre, tipo }` → `ids.unidades: [{ nombre, id: nombre }]`. Si es «Búfala N» entra también en la lista de equipos. Aviso para fijar su régimen.
+- **Unidad: renombrar se rechaza** (el nombre es su id). **Baja** `{ id, activa:false, hasta }` **solo si no le quedan técnicos después de esa fecha**; si los tiene, el error dice cuáles.
+- Tras cualquier guardado, la lista de técnicos de ⚙️ Configuración se pone al día sola (la usa el KPI).
 
 ### ENCARGO NUEVO 7 — Iconos de ayuda «i» en el panel y en la página de la Dirección (26/09/2026 · sin backend)
 

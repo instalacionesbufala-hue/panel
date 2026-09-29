@@ -154,6 +154,14 @@ Hoy el desplegable solo ofrece los vehículos **vigentes en el mes de la factura
 - **Enseñar siempre las cuatro matrículas actuales** (`vehiculos` con `activo: true`), en cualquier mes, más las que ya tenga asignadas la factura.
 - **Añadir la opción «Estructura (sin vehículo)»**, que se envía como `matricula: "ESTRUCTURA"`. El backend (v3.20.24) la acepta y la imputa a Estructura sin aviso de «sin matrícula». En `panelCompras` vuelve como `matricula: "ESTRUCTURA"`: el panel debe contarla como asignada y rotularla «Estructura».
 
+### ENCARGO NUEVO 8 — «Aplicar a todas las facturas de este proveedor» (29/09/2026 · Panel_Compras v1.18)
+
+César: al clasificar un proveedor quiere que se clasifiquen igual **todas sus facturas, anteriores y futuras**, sin ir una a una (pasa con Amazon, Dubelstore y otros 10 proveedores, cuyas facturas están desglosadas en líneas «Proveedor · texto» y cada línea pide su propia clasificación).
+
+**Backend ya en producción:** `panelClasificarProveedor` acepta **`todas: true`** junto a `proveedor` y `tipo`. Vale desde la fila del proveedor **o desde cualquiera de sus líneas** («Amazon… · Factura de…»): el backend toma el nombre base (lo que va antes de « · »), fija ese tipo al proveedor (deja de desglosarse) y lo pone en **todas** sus filas, también en las clasificadas a mano. Respuesta `ok`, `filas` (cuántas cambian) y un aviso con el resumen. **Rechaza** (`ok:false` + `error`) `todas:true` con `mixto` o `materialUso`.
+
+**Qué pide César en la pantalla de Compras:** junto al selector de tipo de cada fila (proveedor o línea), una casilla **«Aplicar a todas las facturas de este proveedor»**, marcada por defecto cuando la fila es una línea desglosada. Antes de enviar, una confirmación: «Se clasificarán como <tipo> las N facturas de <proveedor>, también las que clasificaste a mano». Deshabilitada si el tipo elegido es «mixto» o «material de uso». Tras guardar, recargar la lista.
+
 ### YA EN PRODUCCIÓN (26/09/2026, Panel_Config v1.5): altas y bajas de técnicos, vehículos y unidades
 
 `panelGuardarConfig` **deja de rechazar** `tecnicos`, `vehiculos` y `unidades`, con el mismo formato que ya mandan los formularios de `js/tecnicos.js`. Se valida todo antes de escribir nada; con un error, `ok:false` + `error` y no se toca nada. Activa los botones que estaban en «próximamente».

@@ -1,11 +1,15 @@
 // Visor de factura: vista previa (PDF o líneas) y clasificación factura a factura (BACKEND.md v3.20.27).
-import * as api from './api.js?v=25';
-import { esc, eur, fecha, avisar, cajaError, listaAvisos } from './ui.js?v=25';
+import * as api from './api.js?v=26';
+import { esc, eur, fecha, avisar, cajaError, listaAvisos, preguntar } from './ui.js?v=26';
 
 // Los tipos llegan como texto u objeto { valor, etiqueta }
 export const valorTipo = t => typeof t === 'string' ? t : (t.valor ?? t.id);
 export const etiquetaTipo = t => typeof t === 'string' ? t.charAt(0).toUpperCase() + t.slice(1) : (t.etiqueta ?? t.nombre ?? valorTipo(t));
 const MATERIAL_USO = 'materialUso';
+// Con «todas» no valen estos tipos: el backend los rechaza
+const NO_TODAS = ['mixto', MATERIAL_USO];
+// Nombre del proveedor sin el texto de la línea: «AMAZON… · Cargador» → «AMAZON…»
+export const baseProveedor = p => String(p || '').split(' · ')[0];
 // Tipos que admiten equipos (panelCompras.tiposConEquipos). Obligatorios solo en «materialUso».
 const tiposConEquipos = compras => compras.tiposConEquipos?.length ? compras.tiposConEquipos : [MATERIAL_USO];
 // Qué pasa si no se marca ningún equipo (BACKEND.md v3.20.28)
@@ -56,6 +60,11 @@ export function abrirVisor({ resumen, compras }) {
   // Equipos iniciales: los que ya tenga la factura; si no, todos en «materialUso» (obligatorios) y ninguno en los opcionales
   const equiposIniciales = t => resumen.tipo === t && resumen.equipos?.length ? resumen.equipos : (t === MATERIAL_USO ? equiposDisponibles : []);
   let equipos = new Set(equiposIniciales(tipo));
+  // «Aplicar a todas las facturas de este proveedor» (Panel_Compras v1.18): marcada por defecto en las líneas desglosadas
+  const base = baseProveedor(resumen.proveedor);
+  const delProveedorEnMes = [...(compras.sinClasificar || []), ...(compras.facturas || [])].filter(f => baseProveedor(f.proveedor) === base).length;
+  let todas = !!resumen.esLinea;
+  const todasPermitida = () => !NO_TODAS.includes(tipo);
   let urlPdf = null, guardando = false, error = null, guardado = false;
   // Se termina a mano (botones, guardado) o con Escape (evento close); lo que llegue primero y una sola vez.
   // No se espera solo al evento close: puede retrasarse si la página no se está dibujando.
@@ -89,7 +98,11 @@ export function abrirVisor({ resumen, compras }) {
         ${tipos.map(t => `<label class="opcion-tipo"><input type="radio" name="visor-tipo" value="${esc(valorTipo(t))}" ${valorTipo(t) === tipo ? 'checked' : ''}> ${esc(etiquetaTipo(t))}</label>`).join('')
           || '<p class="tenue">El servidor no ha enviado los tipos de factura.</p>'}
       </fieldset>
-      ${conEquipos.includes(tipo) ? `<fieldset class="visor-equipos"><legend>${tipo === MATERIAL_USO ? 'Repartir entre' : 'Cargar a los equipos (opcional)'}</legend>
+      <label class="casilla-todas ${todasPermitida() ? '' : 'inactiva'}"><input type="checkbox" name="visor-todas" ${todas && todasPermitida() ? 'checked' : ''} ${todasPermitida() ? '' : 'disabled'}>
+        <span>Aplicar a todas las facturas de <strong>${esc(base)}</strong>, anteriores y futuras
+        ${todasPermitida() ? '' : '<small>No se puede con «mixto» ni con «material de uso».</small>'}</span></label>
+      ${todas && todasPermitida() && conEquipos.includes(tipo) ? '<p class="tenue">Aplicado a todas, no se cargan equipos. Si alguna debe ir a equipos, ábrela después y elígelos.</p>' : ''}
+      ${!(todas && todasPermitida()) && conEquipos.includes(tipo) ? `<fieldset class="visor-equipos"><legend>${tipo === MATERIAL_USO ? 'Repartir entre' : 'Cargar a los equipos (opcional)'}</legend>
           ${equiposDisponibles.map(e => `<label class="en-linea"><input type="checkbox" name="visor-equipo" value="${esc(e)}" ${equipos.has(e) ? 'checked' : ''}> ${esc(e)}</label>`).join('')
             || '<p class="tenue">El servidor no ha enviado los equipos.</p>'}
           <p class="${equipos.size || tipo !== MATERIAL_USO ? 'tenue' : 'error'}" id="visor-reparto">${equipos.size
@@ -149,11 +162,22 @@ export function abrirVisor({ resumen, compras }) {
   async function guardar() {
     guardando = true; error = null; pintarLado();
     try {
-      // En los tipos con equipos se envía siempre la lista (vacía en los opcionales = ningún equipo)
-      const r = await api.clasificarFactura(resumen.id, tipo, conEquipos.includes(tipo) ? [...equipos] : null);
-      listaAvisos(r.avisos, 15000);
       const t = tipos.find(x => valorTipo(x) === tipo);
-      avisar(`Factura clasificada como «${t ? etiquetaTipo(t) : tipo}».`);
+      const nombreTipo = t ? etiquetaTipo(t) : tipo;
+      if (todas && todasPermitida()) {
+        const ok = await preguntar('Aplicar a todas las facturas',
+          `<p>Se clasificarán como <strong>«${esc(nombreTipo)}»</strong> todas las facturas de <strong>${esc(base)}</strong> (${delProveedorEnMes} en este mes), también las que clasificaste a mano. Las próximas entrarán así.</p>`,
+          { aceptar: 'Aplicar a todas' });
+        if (!ok) { guardando = false; pintarLado(); return; }
+        const r = await api.clasificarProveedor(resumen.proveedor, tipo, true);
+        listaAvisos(r.avisos, 15000);
+        avisar(`${base}: ${r.filas ?? 'todas las'} factura${r.filas === 1 ? '' : 's'} clasificada${r.filas === 1 ? '' : 's'} como «${nombreTipo}».`);
+      } else {
+        // En los tipos con equipos se envía siempre la lista (vacía en los opcionales = ningún equipo)
+        const r = await api.clasificarFactura(resumen.id, tipo, conEquipos.includes(tipo) ? [...equipos] : null);
+        listaAvisos(r.avisos, 15000);
+        avisar(`Factura clasificada como «${nombreTipo}».`);
+      }
       guardado = true;
       terminar();
       return;
@@ -165,6 +189,7 @@ export function abrirVisor({ resumen, compras }) {
   }
 
   function alCambiar(ev) {
+      if (ev.target.name === 'visor-todas') { todas = ev.target.checked; error = null; pintarLado(); }
       if (ev.target.name === 'visor-tipo') { tipo = ev.target.value; equipos = new Set(equiposIniciales(tipo)); error = null; pintarLado(); }
       if (ev.target.name === 'visor-equipo') {
         ev.target.checked ? equipos.add(ev.target.value) : equipos.delete(ev.target.value);

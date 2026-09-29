@@ -2,6 +2,19 @@
 
 **El contrato vive en [`BACKEND.md`](BACKEND.md)**, lo mantiene el backend y manda sobre este fichero. Aquí queda lo que decide el panel por su cuenta y lo que el panel pregunta. Revisado contra BACKEND.md **v3.20.40** el 26/09/2026.
 
+## «Aplicar a todas las facturas de este proveedor» — hecho (encargo 8, Panel_Compras v1.18)
+
+- **Casilla «Aplicar a todas las facturas de este proveedor»** en los dos sitios donde se elige tipo:
+  - en la cabecera de cada proveedor de «Facturas sin clasificar», junto a «Todas como [tipo]», con el botón «Aplicar»;
+  - en el visor de cada factura, bajo los tipos.
+- **Marcada por defecto** cuando la fila es una línea desglosada (`esLinea`), y **desactivada** si el tipo elegido es «mixto» o «material de uso», con la explicación.
+- **Con la casilla marcada** se envía `panelClasificarProveedor { proveedor, tipo, todas: true }`, con el `proveedor` tal cual llega (proveedor o línea); el backend toma el nombre base. Antes de enviar, una confirmación: «Se clasificarán como «tipo» todas las facturas de «proveedor» (N en este mes), también las que clasificaste a mano».
+  - N solo cuenta las del mes cargado, porque el panel no ve los demás meses. El total real lo da el aviso del backend (`filas`), que se enseña siempre.
+- **Sin la casilla**, todo sigue como antes: cabecera → `panelClasificarProveedor` sin `todas`; visor → `panelClasificarFactura` con sus equipos.
+- **Equipos:** con «todas» no se envían equipos, porque la acción no los admite. El visor lo avisa («Aplicado a todas, no se cargan equipos…»).
+- Tras guardar se vuelve a leer `panelCompras`.
+- Comprobado con el simulador local: casilla marcada en la línea y desmarcada en proveedores normales, desactivada con «mixto» y «material de uso», confirmación y envío desde el visor y desde la cabecera.
+
 ## Altas y bajas de técnicos, vehículos y unidades en producción — hecho (Panel_Config v1.5)
 
 - «Técnicos y vehículos» deja de ser de solo consulta: se quitan el «próximamente» y los botones desactivados.

@@ -461,3 +461,11 @@ tr.sin-casar .cal-tec { color: var(--error); }
 }
 .burbuja-ayuda.invertida::before { top: auto; bottom: -5px; }
 .fila-regimen { display: flex; align-items: center; gap: 4px; }
+
+/* «Aplicar a todas las facturas de este proveedor» */
+.casilla-todas { display: flex; align-items: flex-start; gap: 8px; font-size: .88rem; font-weight: 600; color: var(--texto); cursor: pointer; }
+.casilla-todas input { min-height: 0; width: 16px; height: 16px; margin-top: 2px; accent-color: var(--acento); }
+.casilla-todas small { display: block; color: var(--tenue); font-weight: 500; }
+.casilla-todas.inactiva { color: var(--tenue); cursor: default; }
+.grupo-cabecera .casilla-todas { align-items: center; font-size: .82rem; }
+.grupo-cabecera .casilla-todas input { margin-top: 0; }

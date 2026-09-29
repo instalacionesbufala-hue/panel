@@ -1,7 +1,7 @@
 // Maestros: técnicos, vehículos y unidades. Nunca se borra nada: se da de baja con fecha.
-import * as api from './api.js?v=25';
-import { ayuda, AYUDA } from './ayudas.js?v=25';
-import { esc, eur, fecha, hoy, vigente, leerImporte, importeEditable, avisar, preguntar, cajaError, listaAvisos } from './ui.js?v=25';
+import * as api from './api.js?v=26';
+import { ayuda, AYUDA } from './ayudas.js?v=26';
+import { esc, eur, fecha, hoy, vigente, leerImporte, importeEditable, avisar, preguntar, cajaError, listaAvisos } from './ui.js?v=26';
 
 export function montar(el) {
   let cfg = null;

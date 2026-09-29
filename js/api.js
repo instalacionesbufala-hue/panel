@@ -286,7 +286,10 @@ export const guardarConfig = async cambios => {
   return r;
 };
 export const asignarCombustible = asignaciones => llamar('panelAsignarCombustible', { metodo: 'POST', cuerpo: { asignaciones } });
-export const clasificarProveedor = (proveedor, tipo) => llamar('panelClasificarProveedor', { metodo: 'POST', cuerpo: { proveedor, tipo } });
+// todas: true (Panel_Compras v1.18) = el tipo pasa al proveedor y a TODAS sus facturas, también las clasificadas a mano.
+// Vale desde el proveedor o desde una de sus líneas «Proveedor · texto». No admite «mixto» ni «materialUso».
+export const clasificarProveedor = (proveedor, tipo, todas = false) =>
+  llamar('panelClasificarProveedor', { metodo: 'POST', cuerpo: { proveedor, tipo, ...(todas ? { todas: true } : {}) } });
 // Ausencias (BACKEND.md, encargo del 26/09/2026). Sin id = alta; con id = edición.
 export const leerAusencias = (desde, hasta) => llamar('panelAusencias', { params: { desde, hasta } });
 export const guardarAusencia = a => llamar('panelGuardarAusencia', { metodo: 'POST', cuerpo: a });
@@ -637,6 +640,20 @@ function demoResponder(accion, params, p) {
       }
       return { ok: true, accion };
     case 'panelClasificarProveedor':
+      if (p.todas) {
+        if (['mixto', 'materialUso'].includes(p.tipo)) return { ok: false, error: 'Con «todas» no se puede usar «mixto» ni «material de uso».' };
+        const base = String(p.proveedor).split(' · ')[0];
+        const suyo = f => String(f.proveedor).split(' · ')[0] === base;
+        let filas = 0;
+        for (const [mes, lista] of Object.entries(demo.sinClasificar)) {
+          const suyas = lista.filter(suyo);
+          demo.sinClasificar[mes] = lista.filter(f => !suyo(f));
+          (demo.facturas[mes] ||= []).push(...suyas.map(f => ({ ...f, tipo: p.tipo, matricula: null, manual: false })));
+          filas += suyas.length;
+        }
+        for (const lista of Object.values(demo.facturas)) for (const f of lista) if (suyo(f) && f.tipo !== p.tipo) { f.tipo = p.tipo; filas++; }
+        return { ok: true, accion, filas, avisos: [`${base}: ${filas} factura${filas === 1 ? '' : 's'} ${filas === 1 ? 'pasa' : 'pasan'} a «${p.tipo}». Las próximas entrarán así.`] };
+      }
       for (const [mes, lista] of Object.entries(demo.sinClasificar)) {
         const suyas = lista.filter(f => f.proveedor === p.proveedor);
         demo.sinClasificar[mes] = lista.filter(f => f.proveedor !== p.proveedor);

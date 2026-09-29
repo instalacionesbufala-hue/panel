@@ -1,8 +1,8 @@
 // Pantalla de combustible: asignar cada gasto de vehículo (combustible, renting, mantenimiento) a su matrícula.
-import * as api from './api.js?v=25';
-import { esc, eur, fecha, mesActual, sumarMeses, nombreMes, avisar, cajaError, selectorMes } from './ui.js?v=25';
-import { ayuda, AYUDA } from './ayudas.js?v=25';
-import { abrirVisor, valorTipo, etiquetaTipo, tiposConEquipos, textoReparto } from './visor.js?v=25';
+import * as api from './api.js?v=26';
+import { esc, eur, fecha, mesActual, sumarMeses, nombreMes, avisar, cajaError, selectorMes, preguntar, listaAvisos } from './ui.js?v=26';
+import { ayuda, AYUDA } from './ayudas.js?v=26';
+import { abrirVisor, valorTipo, etiquetaTipo, tiposConEquipos, textoReparto, baseProveedor } from './visor.js?v=26';
 
 const SIN = '';
 // Gasto imputado a Estructura sin vehículo concreto (BACKEND.md v3.20.24): cuenta como asignado
@@ -71,11 +71,27 @@ export function montar(el) {
     pintar();
   }
 
-  async function clasificar(proveedor, tipo) {
+  async function clasificar(proveedor, tipo, todas = false) {
+    const t = (compras.tiposProveedor || []).find(x => valorTipo(x) === tipo);
+    if (todas) {
+      if (['mixto', 'materialUso'].includes(tipo)) { avisar('«Aplicar a todas» no se puede con «mixto» ni con «material de uso».', 'error'); return; }
+      const base = baseProveedor(proveedor);
+      const n = [...(compras.sinClasificar || []), ...(compras.facturas || [])].filter(f => baseProveedor(f.proveedor) === base).length;
+      const ok = await preguntar('Aplicar a todas las facturas',
+        `<p>Se clasificarán como <strong>«${esc(t ? etiquetaTipo(t) : tipo)}»</strong> todas las facturas de <strong>${esc(base)}</strong> (${n} en este mes), también las que clasificaste a mano. Las próximas entrarán así.</p>`,
+        { aceptar: 'Aplicar a todas' });
+      if (!ok) return;
+    }
     clasificando.add(proveedor); pintar();
     try {
-      await api.clasificarProveedor(proveedor, tipo);
-      const t = (compras.tiposProveedor || []).find(x => valorTipo(x) === tipo);
+      const r = await api.clasificarProveedor(proveedor, tipo, todas);
+      if (todas) {
+        listaAvisos(r.avisos, 15000);
+        avisar(`${baseProveedor(proveedor)}: ${r.filas ?? 'todas las'} factura${r.filas === 1 ? '' : 's'} clasificada${r.filas === 1 ? '' : 's'} como «${t ? etiquetaTipo(t) : tipo}».`);
+        clasificando.delete(proveedor);
+        await recargar();
+        return;
+      }
       const esLinea = (compras.sinClasificar || []).some(f => f.proveedor === proveedor && f.esLinea);
       avisar(esLinea
         ? `La línea «${proveedor}» queda clasificada como «${t ? etiquetaTipo(t) : tipo}». Las próximas líneas con ese texto entrarán solas.`
@@ -224,7 +240,8 @@ export function montar(el) {
                 <option value="">— Elige —</option>
                 ${tipos.map(t => `<option value="${esc(valorTipo(t))}">${esc(etiquetaTipo(t))}</option>`).join('')}
               </select></label>
-            <button class="boton secundario mini" data-accion="clasificar" data-proveedor="${esc(p)}" ${clasificando.has(p) ? 'disabled' : ''}>Aplicar a todo el proveedor</button>
+            <label class="en-linea casilla-todas"><input type="checkbox" data-todas="${esc(p)}" ${d.esLinea ? 'checked' : ''}> Aplicar a todas las facturas de este proveedor</label>
+            <button class="boton secundario mini" data-accion="clasificar" data-proveedor="${esc(p)}" ${clasificando.has(p) ? 'disabled' : ''}>Aplicar</button>
           </div>
           <div class="tabla-scroll"><table>
             <thead><tr><th>Fecha</th><th>Número</th><th class="num">Importe sin IVA</th><th></th></tr></thead>
@@ -261,6 +278,11 @@ export function montar(el) {
 
   function alCambiar(ev) {
     const t = ev.target;
+    // «Aplicar a todas» no vale con «mixto» ni «material de uso»
+    if (t.dataset.proveedorTipo !== undefined) {
+      const casilla = [...el.querySelectorAll('input[data-todas]')].find(c => c.dataset.todas === t.dataset.proveedorTipo);
+      if (casilla) { casilla.disabled = ['mixto', 'materialUso'].includes(t.value); casilla.closest('label').classList.toggle('inactiva', casilla.disabled); }
+    }
     if (t.id === 'mes') {
       irAMes(t.value, t);
     } else if (t.dataset.factura) {
@@ -286,7 +308,8 @@ export function montar(el) {
     if (a === 'clasificar') {
       const sel = [...el.querySelectorAll('select[data-proveedor-tipo]')].find(s => s.dataset.proveedorTipo === b.dataset.proveedor);
       if (!sel?.value) { avisar('Elige primero el tipo para todo el proveedor.', 'aviso'); sel?.focus(); return; }
-      clasificar(b.dataset.proveedor, sel.value);
+      const casilla = [...el.querySelectorAll('input[data-todas]')].find(c => c.dataset.todas === b.dataset.proveedor);
+      clasificar(b.dataset.proveedor, sel.value, !!casilla?.checked && !casilla.disabled);
     }
     if (a === 'ver') verFactura(b.dataset.id);
   }

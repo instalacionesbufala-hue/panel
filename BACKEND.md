@@ -120,6 +120,33 @@ Lo que toca a cada lado:
 - Tras guardar, la caché de `panelConfig` se invalida sola.
 - En `panelConfig`, la asignación `derivada` de una furgoneta (la que sale de `🚚 Recursos`) termina el día antes de su primer movimiento desde el panel. Las filas internas de «furgoneta sin unidad» no se publican.
 
+### Cambios de técnicos con fecha pasada — YA EN PRODUCCIÓN (backend v3.20.79 · Panel Config v1.6, 02/10/2026)
+
+César necesita registrar cambios que ya ocurrieron (un día que se le pasó apuntarlo, o mientras estuvo de vacaciones). **El backend ya acepta cualquier fecha, también pasada**, y además un **`hasta`** opcional en las filas de técnico:
+
+```json
+{ "accion": "panelGuardarConfig",
+  "asignaciones": [
+    { "idTec": "E01", "idUnidad": "Búfala 1", "desde": "2026-09-22", "hasta": "2026-09-23" },
+    { "idTec": "E04", "idUnidad": "Búfala 2", "desde": "2026-09-15" }
+  ] }
+```
+
+- **Con `hasta` = cambio PUNTUAL** (lo normal: 1 o 2 días). El técnico está en `idUnidad` del `desde` al `hasta` y **después vuelve solo a lo que tenía**. El backend parte su asignación en tramos (antes · el cambio · después) sin tocar el resto del histórico.
+- **Sin `hasta` = DEFINITIVO** desde `desde` (bajas largas, cambios que se quedan). Si ya había un cambio posterior registrado para ese técnico, la nueva asignación termina el día antes de él.
+- **Rechazos** (`ok:false` + `error`, no se escribe nada): `hasta` anterior a `desde`; `hasta` en una fila de furgoneta (los periodos son solo para técnicos); cualquier fecha en un mes con la **liquidación del variable cerrada**.
+- **Recálculo:** la respuesta trae `costesEnCola: true`; costes reales, Rentabilidad, KPI Mensual y la caché del dashboard se recalculan solos unos 2 minutos después del último guardado. No hace falta hacer nada más.
+- El alta de las brigadas ya no se mueve con estos cambios (backend v3.20.79): el aviso sobre la Rentabilidad dejará de salir en los cambios puntuales.
+
+**ENCARGO PARA EL PANEL (`js/unidades.js`, `js/api.js`)**
+1. **Quitar el «solo lectura» de los días pasados.** Elegir un día anterior a hoy debe permitir mover técnicos igual que hoy. Furgonetas: en días pasados, igual que ahora (sin periodo).
+2. **Al mover un técnico, preguntar el tipo de cambio:**
+   - **Puntual (opción por defecto):** campo «hasta», que por defecto es el mismo día elegido (cambio de 1 día). Se manda `hasta`.
+   - **Definitivo a partir de esa fecha:** sin `hasta`.
+   En el resumen de cambios sin guardar, que se vea «del X al Y» o «desde X».
+3. **Enseñar el `error` del servidor tal cual** cuando rechace (mes cerrado, fechas al revés) y los `avisos` como hasta ahora.
+4. **Reintentos en `api.js`.** Con el servidor ocupado, Google contesta a veces con su página de error (código 200 pero HTML, o 404 de `script.googleusercontent.com`), y el navegador lo ve como «Failed to fetch». Para **lecturas** (GET): reintentar hasta 3 veces, con 1-2 s de espera, cuando falle la red, llegue un 404 o la respuesta no sea JSON. Para **escrituras** (POST): no reintentar a ciegas; mostrar «El servidor está ocupado, vuelve a intentarlo en unos segundos». Así no se duplica un guardado.
+
 ## Compras — `panelCompras`
 
 Sale de `💳 Compras Holded` (sincronizada con Holded cada noche, 180 días de histórico) y `🏷️ Proveedores`.

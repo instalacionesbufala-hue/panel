@@ -1,8 +1,8 @@
 // Pantalla de unidades: formar unidades arrastrando técnicos y vehículos.
-import * as api from './api.js?v=26';
-import { esc, fecha, hoy, vigente, avisar, preguntar, cajaError, listaAvisos } from './ui.js?v=26';
-import * as regimen from './regimen.js?v=26';
-import { ayuda, AYUDA } from './ayudas.js?v=26';
+import * as api from './api.js?v=27';
+import { esc, fecha, hoy, vigente, avisar, preguntar, cajaError, listaAvisos } from './ui.js?v=27';
+import * as regimen from './regimen.js?v=27';
+import { ayuda, AYUDA } from './ayudas.js?v=27';
 
 const LIBRE = '__libre__';
 // El rol no restringe nada (BACKEND.md): cualquier técnico va a cualquier unidad. Solo se avisa
@@ -26,14 +26,17 @@ export function montar(el) {
   let arrastre = null;   // { tipo: 'tec'|'veh', id }
   let parametros = null, errorParametros = null;   // régimen de cada unidad (servicios/día y jornada)
 
-  const soloLectura = () => dia < hoy();
+  // Desde Panel Config v1.6 se puede cambiar cualquier día, también uno pasado (lo que se olvidó apuntar)
+  const esPasado = () => dia < hoy();
+  // Periodo de cada técnico movido: { hasta } = puntual (vuelve solo después); { hasta: null } = definitivo
+  let periodos = new Map();
 
   // ── Datos ──
   // conservar: si hay cambios sin guardar, se mantienen aunque se vuelva a leer del servidor
   async function recargar(conservar = true) {
     errorCarga = null;
     try {
-      const habiaCambios = conservar && cfg && borrador && !soloLectura() && cambios().length > 0;
+      const habiaCambios = conservar && cfg && borrador && cambios().length > 0;
       cfg = await api.leerConfig();
       if (habiaCambios) base = composicion();
       else recalcular();
@@ -57,7 +60,7 @@ export function montar(el) {
 
   function unidadesVisibles() {
     const conAsignacion = new Set(cfg.asignaciones.filter(a => vigente(a.desde, a.hasta, dia)).map(a => a.idUnidad));
-    return cfg.unidades.filter(u => soloLectura() ? (u.activa || conAsignacion.has(u.id)) : u.activa !== false);
+    return cfg.unidades.filter(u => esPasado() ? (u.activa || conAsignacion.has(u.id)) : u.activa !== false);
   }
   const tecnicosVisibles = () => cfg.tecnicos.filter(t => vigente(t.alta, t.baja, dia));
   const vehiculosVisibles = () => cfg.vehiculos.filter(v => vigente(v.desde, v.hasta, dia));
@@ -79,6 +82,7 @@ export function montar(el) {
   function recalcular() {
     base = composicion();
     borrador = new Map([...base].map(([k, v]) => [k, { tecs: [...v.tecs], mat: v.mat, choques: v.choques }]));
+    periodos = new Map();
     errorGuardado = null;
   }
 
@@ -96,7 +100,9 @@ export function montar(el) {
     // idUnidad null = sale de todas. La furgoneta va en su propia fila de unidad, no en la del técnico.
     for (const id of ids) {
       const antes = unidadDeTec(base, id), despues = unidadDeTec(borrador, id);
-      if (antes !== despues) filas.push({ idTec: id, idUnidad: despues, desde: dia });
+      // Con «hasta» = cambio puntual: después vuelve solo a lo que tenía (Panel Config v1.6)
+      const hasta = periodos.get(id)?.hasta;
+      if (antes !== despues) filas.push({ idTec: id, idUnidad: despues, desde: dia, ...(hasta ? { hasta } : {}) });
     }
     // Furgoneta: { idTec: null, idUnidad, matricula | null, desde }, siempre que cambie la de la unidad.
     // Si se mueve de una unidad a otra salen las dos filas, así ninguna queda contando en dos sitios.
@@ -124,11 +130,39 @@ export function montar(el) {
     el.querySelectorAll(sel).forEach(n => { n.classList.add('rechazo'); setTimeout(() => n.classList.remove('rechazo'), 900); });
   }
 
+  // Al mover un técnico se pregunta si el cambio es puntual (por defecto, hasta el mismo día) o definitivo.
+  // Devuelve { hasta } (null = definitivo) o null si se cancela.
+  async function preguntarCambio(t, origen, destino, extras) {
+    const nombre = esc(t?.nombre || '');
+    const intro = destino === LIBRE
+      ? `<p>Sacar a <strong>${nombre}</strong> de «${esc(nombreUnidad(origen))}» el ${fecha(dia)}.</p>`
+      : origen
+        ? `<p><strong>${nombre}</strong> está en «${esc(nombreUnidad(origen))}» el ${fecha(dia)}; un técnico no puede estar en dos unidades a la vez. Pasarlo a <strong>«${esc(nombreUnidad(destino))}»</strong>:</p>`
+        : `<p>Asignar a <strong>${nombre}</strong> a <strong>«${esc(nombreUnidad(destino))}»</strong> el ${fecha(dia)}.</p>`;
+    let v = { tipoCambio: 'puntual', hasta: periodos.get(t?.id)?.hasta || dia }, error = '';
+    for (;;) {
+      const form = await preguntar('Mover técnico', `${intro}
+        ${extras.map(x => `<p class="caja-aviso">${x}</p>`).join('')}
+        ${error ? `<p class="caja-error">${esc(error)}</p>` : ''}
+        <fieldset class="tipo-cambio"><legend>Tipo de cambio</legend>
+          <label class="opcion-tipo"><input type="radio" name="tipoCambio" value="puntual" ${v.tipoCambio === 'puntual' ? 'checked' : ''}>
+            <span><strong>Puntual</strong> · después vuelve solo a lo que tenía</span></label>
+          <label class="hasta-cambio">Hasta (incluido)<input type="date" name="hasta" value="${esc(v.hasta)}" min="${dia}"></label>
+          <label class="opcion-tipo"><input type="radio" name="tipoCambio" value="definitivo" ${v.tipoCambio === 'definitivo' ? 'checked' : ''}>
+            <span><strong>Definitivo</strong> a partir del ${fecha(dia)}</span></label>
+        </fieldset>`, { aceptar: 'Mover', cancelar: 'Cancelar' });
+      if (!form) return null;
+      v = Object.fromEntries(new FormData(form));
+      if (v.tipoCambio === 'definitivo') return { hasta: null };
+      if (!v.hasta || v.hasta < dia) { error = `«Hasta» tiene que ser el ${fecha(dia)} o un día posterior.`; v.hasta = v.hasta || dia; continue; }
+      return { hasta: v.hasta };
+    }
+  }
+
   async function soltar(tipo, id, destino) {
-    if (soloLectura()) return;
     // Si mientras se confirma cambia el día o se recarga el borrador, la confirmación ya no vale
     const miBorrador = borrador;
-    const sigueIgual = () => borrador === miBorrador && !soloLectura();
+    const sigueIgual = () => borrador === miBorrador;
     if (tipo === 'tec') {
       const origen = unidadDeTec(borrador, id);
       if (origen === destino || (!origen && destino === LIBRE)) return;
@@ -142,23 +176,16 @@ export function montar(el) {
           avisar(`«${nombreUnidad(destino)}» ya tiene ${limite} técnico${limite === 1 ? '' : 's'}, el máximo que admite el servidor.`, 'error');
           return;
         }
-        const extras = avisosFuturos(id, destino);
-        if (origen) {
-          // Un técnico no puede estar en dos unidades el mismo día: se avisa aquí, al soltar
-          rechazo(destino);
-          const ok = await preguntar('Técnico ya asignado',
-            `<p><strong>${esc(t?.nombre || id)}</strong> ya está en <strong>«${esc(nombreUnidad(origen))}»</strong> el ${fecha(dia)}. Un técnico no puede estar en dos unidades a la vez.</p>
-             <p>¿Quieres sacarlo de «${esc(nombreUnidad(origen))}» y pasarlo a «${esc(nombreUnidad(destino))}» desde el ${fecha(dia)}?</p>
-             ${extras.map(x => `<p class="caja-aviso">${x}</p>`).join('')}`,
-            { aceptar: 'Sí, moverlo', cancelar: 'No, dejarlo donde está' });
-          if (!ok || !sigueIgual()) return;
-        } else if (extras.length) {
-          const ok = await preguntar('Asignación programada', extras.map(x => `<p>${x}</p>`).join('') + '<p>¿Asignarlo igualmente?</p>', { aceptar: 'Asignar' });
-          if (!ok || !sigueIgual()) return;
-        }
       }
+      // Una sola pregunta: el aviso de que ya está en otra unidad, lo programado y si es puntual o definitivo
+      if (origen && destino !== LIBRE) rechazo(destino);
+      const periodo = await preguntarCambio(t, origen, destino, destino === LIBRE ? [] : avisosFuturos(id, destino));
+      if (!periodo || !sigueIgual()) return;
       if (origen) borrador.get(origen).tecs = borrador.get(origen).tecs.filter(x => x !== id);
       if (destino !== LIBRE) borrador.get(destino).tecs.push(id);
+      // Si vuelve a donde estaba según el servidor, ya no hay cambio que guardar
+      if (unidadDeTec(base, id) === unidadDeTec(borrador, id)) periodos.delete(id);
+      else periodos.set(id, periodo);
     } else {
       const origen = unidadDeVeh(borrador, id);
       if (origen === destino || (!origen && destino === LIBRE)) return;
@@ -190,7 +217,7 @@ export function montar(el) {
     try {
       const r = await api.guardarConfig({ asignaciones: filas });
       listaAvisos(r.avisos, 20000);   // BACKEND.md: los avisos se enseñan siempre
-      avisar(`Composición guardada con efecto desde el ${fecha(dia)}.`, 'info');
+      avisar(`Cambios guardados con fecha del ${fecha(dia)}.`, 'info');
       guardando = false;
       await recargar(false);
       return;
@@ -203,9 +230,19 @@ export function montar(el) {
   }
 
   // ── Pintado ──
+  // Una línea por cambio pendiente: «del X al Y» (puntual) o «desde X» (definitivo)
+  function textoCambio(f) {
+    const cuando = f.hasta ? `del ${fecha(f.desde)} al ${fecha(f.hasta)}` : `desde el ${fecha(f.desde)}`;
+    if (f.idTec) {
+      const destino = f.idUnidad ? `«${esc(nombreUnidad(f.idUnidad))}»` : 'sin unidad';
+      return `<strong>${esc(tec(f.idTec)?.nombre || f.idTec)}</strong> → ${destino} · ${cuando}${f.hasta ? ' <span class="insignia">puntual</span>' : ' <span class="insignia aviso">definitivo</span>'}`;
+    }
+    return `<strong>«${esc(nombreUnidad(f.idUnidad))}»</strong>: furgoneta ${f.matricula ? esc(f.matricula) : 'ninguna'} · ${cuando}`;
+  }
+
   function fichaTec(id) {
     const t = tec(id) || { id, nombre: id };
-    return `<div class="ficha tecnico" ${soloLectura() ? '' : 'draggable="true"'} data-tipo="tec" data-id="${esc(id)}">
+    return `<div class="ficha tecnico" draggable="true" data-tipo="tec" data-id="${esc(id)}">
       <span class="avatar" style="background:${colorDe(t.id)}" aria-hidden="true">${esc(iniciales(t.nombre))}</span>
       <span class="datos"><span class="nombre">${esc(t.nombre)}</span>
       <span class="detalle">${t.rol ? esc(t.rol) + ' · ' : ''}${esc(t.id)}${t.grupo ? ' · ' + esc(t.grupo) : ''}</span></span>
@@ -214,7 +251,7 @@ export function montar(el) {
   }
   function fichaVeh(mat) {
     const v = veh(mat) || { matricula: mat };
-    return `<div class="ficha vehiculo" ${soloLectura() ? '' : 'draggable="true"'} data-tipo="veh" data-id="${esc(mat)}">
+    return `<div class="ficha vehiculo" draggable="true" data-tipo="veh" data-id="${esc(mat)}">
       <span class="placa${v.sinMatricula ? ' sin' : ''}"><b>${esc(v.matricula)}</b></span>
       <span class="datos"><span class="nombre">${esc(v.modelo || 'Vehículo')}</span>
       <span class="detalle">${v.brigada ? esc(v.brigada) : '&nbsp;'}</span></span>
@@ -224,7 +261,6 @@ export function montar(el) {
   }
   // Camino alternativo al arrastre (pantallas táctiles)
   function selectorMover(tipo, id, actual) {
-    if (soloLectura()) return '';
     const opciones = [[LIBRE, 'Sin asignar'], ...[...borrador.keys()].map(u => [u, nombreUnidad(u)])];
     return `<select class="mover" data-tipo="${tipo}" data-id="${esc(id)}" aria-label="Mover ${esc(id)} a">
       ${opciones.map(([v, n]) => `<option value="${esc(v)}" ${v === (actual || LIBRE) ? 'selected' : ''}>${v === (actual || LIBRE) ? '' : '→ '}${esc(n)}</option>`).join('')}
@@ -238,8 +274,7 @@ export function montar(el) {
       return;
     }
     if (!cfg) return;
-    const lectura = soloLectura();
-    const filas = lectura ? [] : cambios();
+    const filas = cambios();
     const asignadosTec = new Set([...borrador.values()].flatMap(c => c.tecs));
     const asignadosVeh = new Set([...borrador.values()].map(c => c.mat).filter(Boolean));
     const libresTec = tecnicosVisibles().filter(t => !asignadosTec.has(t.id));
@@ -248,7 +283,7 @@ export function montar(el) {
     const primerRegistro = cfg.asignaciones.some(a => !a.desde) ? null
       : cfg.asignaciones.reduce((m, a) => (!m || a.desde < m ? a.desde : m), null);
     const tarjeta = ([u, c]) => `
-              <article class="unidad ${!lectura && unidadCambiada(u) ? 'cambiada' : ''} ${esNoProductiva(unidad(u)) ? 'no-productiva' : ''}">
+              <article class="unidad ${unidadCambiada(u) ? 'cambiada' : ''} ${esNoProductiva(unidad(u)) ? 'no-productiva' : ''}">
                 <header><h3>${esc(nombreUnidad(u))}</h3>
                   ${unidad(u)?.computaVariable === false ? '<span class="insignia rosa" title="Esta unidad y sus técnicos quedan fuera del cálculo del variable">no computa variable</span>' : ''}
                   <span class="insignia">${c.tecs.length === 0 ? 'sin técnicos' : c.tecs.length === 1 ? '1 técnico' : c.tecs.length + ' técnicos'}</span></header>
@@ -256,11 +291,11 @@ export function montar(el) {
                 ${c.choques.length ? `<p class="insignia error">Dato incoherente en el servidor: ${esc(c.choques.join('; '))}</p>` : ''}
                 <div class="hueco" data-unidad="${esc(u)}" data-acepta="tec">
                   <span class="hueco-titulo">Técnicos</span>
-                  ${c.tecs.map(fichaTec).join('') || `<p class="vacio">${lectura ? 'Nadie asignado.' : 'Suelta aquí un técnico.'}</p>`}
+                  ${c.tecs.map(fichaTec).join('') || '<p class="vacio">Suelta aquí un técnico.</p>'}
                 </div>
                 <div class="hueco" data-unidad="${esc(u)}" data-acepta="veh">
                   <span class="hueco-titulo">Vehículo</span>
-                  ${c.mat ? fichaVeh(c.mat) : `<p class="vacio">${lectura ? 'Sin vehículo.' : 'Suelta aquí un vehículo.'}</p>`}
+                  ${c.mat ? fichaVeh(c.mat) : '<p class="vacio">Suelta aquí un vehículo.</p>'}
                 </div>
               </article>`;
     const brigadas = [...borrador].filter(([u]) => !esNoProductiva(unidad(u)));
@@ -284,9 +319,9 @@ export function montar(el) {
         </div>
         <div class="kpi"><small>Brigadas completas ${ayuda(AYUDA.brigadasCompletas)}</small><div class="cifra">${completas}<span> / ${brigadas.length}</span></div>
           <div class="medidor"><i style="width:${pct(completas, brigadas.length)}%"></i></div></div>
-        <div class="kpi ${filas.length ? 'aviso' : ''}"><small>${lectura ? 'Vehículos en uso' : 'Cambios sin guardar'} ${ayuda(lectura ? AYUDA.vehiculosEnUso : AYUDA.cambiosSinGuardar)}</small>
-          <div class="cifra">${lectura ? `${asignadosVeh.size}<span> / ${totalVeh}</span>` : filas.length}</div>
-          ${lectura ? `<div class="medidor"><i style="width:${pct(asignadosVeh.size, totalVeh)}%"></i></div>` : `<span class="tenue">Vehículos en uso: ${asignadosVeh.size} de ${totalVeh}</span>`}</div>
+        <div class="kpi ${filas.length ? 'aviso' : ''}"><small>Cambios sin guardar ${ayuda(AYUDA.cambiosSinGuardar)}</small>
+          <div class="cifra">${filas.length}</div>
+          <span class="tenue">Vehículos en uso: ${asignadosVeh.size} de ${totalVeh}</span></div>
       </div>`;
 
     el.innerHTML = `
@@ -296,21 +331,21 @@ export function montar(el) {
         <button class="boton secundario" data-accion="hoy" ${dia === hoy() ? 'disabled' : ''}>Hoy</button>
       </div>
       ${errorCarga ? cajaError(errorCarga, 'No se ha podido actualizar') : ''}
-      ${lectura
-        ? `<div class="caja-aviso"><strong>Consulta del ${fecha(dia)} · solo lectura.</strong> ${primerRegistro && dia < primerRegistro
-             ? `El servidor no tiene registrada ninguna composición antes del ${fecha(primerRegistro)}, así que este día sale vacío.`
-             : 'Así estaban formadas las unidades ese día.'} Para cambiar la composición vuelve a hoy o a una fecha futura.</div>`
-        : `<div class="tarjeta bloque barra" style="align-items:center;margin-bottom:1rem">
-             <span>${filas.length
-               ? `<strong>${filas.length} cambio${filas.length === 1 ? '' : 's'} sin guardar.</strong> Se aplicarán con efecto desde el <strong>${fecha(dia)}</strong>; la asignación anterior se cierra el día antes y queda en el histórico.`
-               : `Sin cambios. Fecha de efecto de lo que cambies: <strong>${fecha(dia)}</strong> (se cambia con el selector de día).`}</span>
-             <span class="empuje"></span>
-             <button class="boton secundario" data-accion="descartar" ${filas.length && !guardando ? '' : 'disabled'}>Descartar</button>
-             <button class="boton" data-accion="guardar" ${filas.length && !guardando ? '' : 'disabled'}>${guardando ? 'Guardando…' : 'Guardar composición'}</button>
-           </div>`}
+      <div class="tarjeta bloque cambios-dia" style="margin-bottom:1rem">
+        <div class="barra" style="align-items:center;margin:0">
+          <span>${filas.length
+            ? `<strong>${filas.length} cambio${filas.length === 1 ? '' : 's'} sin guardar</strong> con fecha del <strong>${fecha(dia)}</strong>.`
+            : `Sin cambios. Lo que cambies tendrá fecha del <strong>${fecha(dia)}</strong> (se cambia con el selector de día).`}</span>
+          <span class="empuje"></span>
+          <button class="boton secundario" data-accion="descartar" ${filas.length && !guardando ? '' : 'disabled'}>Descartar</button>
+          <button class="boton" data-accion="guardar" ${filas.length && !guardando ? '' : 'disabled'}>${guardando ? 'Guardando…' : 'Guardar cambios'}</button>
+        </div>
+        ${filas.length ? `<ul class="lista-cambios">${filas.map(textoCambio).map(x => `<li>${x}</li>`).join('')}</ul>` : ''}
+        ${esPasado() ? `<p class="caja-aviso" style="margin:.75rem 0 0"><strong>Día pasado.</strong> Los cambios se registran con fecha del ${fecha(dia)}${primerRegistro && dia < primerRegistro ? ` (el servidor no tiene composición registrada antes del ${fecha(primerRegistro)})` : ''}. Si ese mes ya tiene cerrada la liquidación del variable, el servidor no lo aceptará.</p>` : ''}
+      </div>
       ${errorGuardado ? cajaError(errorGuardado, 'El servidor no ha aceptado el cambio') : ''}
       ${resumen}
-      <div class="tablero ${lectura ? 'solo-lectura' : ''}">
+      <div class="tablero">
         <section class="columna" data-libre="tec" aria-label="Técnicos sin asignar">
           <h2>Técnicos sin asignar <span class="insignia">${libresTec.length}</span></h2>
           <div class="lista-fichas">${libresTec.map(t => fichaTec(t.id)).join('') || '<p class="vacio">Todos los técnicos están en alguna unidad.</p>'}</div>
@@ -413,7 +448,7 @@ export function montar(el) {
   recargar();
 
   return {
-    pendiente: () => !!(cfg && borrador && !soloLectura() && cambios().length),
+    pendiente: () => !!(cfg && borrador && cambios().length),
     recargar,
     desmontar() {
       el.removeEventListener('dragstart', alArrastrar);

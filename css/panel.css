@@ -469,3 +469,10 @@ tr.sin-casar .cal-tec { color: var(--error); }
 .casilla-todas.inactiva { color: var(--tenue); cursor: default; }
 .grupo-cabecera .casilla-todas { align-items: center; font-size: .82rem; }
 .grupo-cabecera .casilla-todas input { margin-top: 0; }
+
+/* Cambios con fecha pasada: puntual o definitivo */
+.tipo-cambio { border: 1px solid var(--borde); border-radius: 14px; padding: 10px 12px 12px; margin: 0; display: grid; gap: 6px; }
+.tipo-cambio legend { font-size: .78rem; font-weight: 800; color: var(--tenue); text-transform: uppercase; letter-spacing: .06em; padding: 0 4px; }
+.tipo-cambio .opcion-tipo input { min-height: 0; width: 16px; height: 16px; accent-color: var(--acento); }
+.tipo-cambio .hasta-cambio { margin-left: 30px; max-width: 220px; }
+.lista-cambios { margin: .75rem 0 0; padding-left: 1.2rem; display: grid; gap: 4px; font-size: .9rem; }

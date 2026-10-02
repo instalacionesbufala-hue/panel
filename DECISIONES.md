@@ -1,6 +1,25 @@
 # Decisiones del panel y dudas para el backend
 
-**El contrato vive en [`BACKEND.md`](BACKEND.md)**, lo mantiene el backend y manda sobre este fichero. Aquí queda lo que decide el panel por su cuenta y lo que el panel pregunta. Revisado contra BACKEND.md **v3.20.40** el 26/09/2026.
+**El contrato vive en [`BACKEND.md`](BACKEND.md)**, lo mantiene el backend y manda sobre este fichero. Aquí queda lo que decide el panel por su cuenta y lo que el panel pregunta. Revisado contra BACKEND.md **v3.20.79** (Panel Config v1.6) el 02/10/2026.
+
+## Cambios de técnicos con fecha pasada — hecho (backend v3.20.79 · Panel Config v1.6)
+
+- **Días pasados editables.** Desaparece el «solo lectura»: cualquier día se puede cambiar igual que hoy. En un día pasado sale el aviso «Los cambios se registran con fecha del …; si ese mes ya tiene cerrada la liquidación del variable, el servidor no lo aceptará». Las furgonetas, igual que antes: sin periodo.
+- **Al mover un técnico** (arrastrando, con «Mover a…» o sacándolo a «sin asignar») sale **una sola pregunta**, que reúne lo que antes eran avisos separados («ya está en otra unidad», «tiene una asignación programada») y el tipo de cambio:
+  - **Puntual** (por defecto): «Hasta (incluido)», que por defecto es el mismo día. Se envía `hasta`. Si es anterior al día elegido, no deja continuar.
+  - **Definitivo** a partir de esa fecha: sin `hasta`.
+  Si el técnico vuelve a la unidad que tiene según el servidor, el cambio desaparece.
+- **Resumen de cambios sin guardar**, una línea por cambio: «Nombre → «Unidad» · del X al Y (puntual)» o «· desde el X (definitivo)». Las furgonetas, ««Unidad»: furgoneta 1234ABC · desde el X».
+- **Errores y avisos:** el `error` del servidor (mes cerrado, fechas al revés) se enseña tal cual y el borrador se conserva. Los `avisos` se enseñan como hasta ahora.
+- **Reintentos** (`api.js`), que **sustituyen al reintento único de la v3.20.28**:
+  - **Lecturas (GET):** hasta 3 reintentos con 1-2 s de espera si falla la red, no hay respuesta o llega algo que no es JSON (la página de error o el 404 de Google). «Reintentando…» sale una vez.
+  - **Escrituras (POST):** ningún reintento a ciegas. Si Google falla, «El servidor está ocupado, vuelve a intentarlo en unos segundos». Si se agotan los 30 s, «Puede que se haya guardado: recarga la pantalla antes de volver a intentarlo».
+  - Un «no» del backend (`ok:false`) nunca se repite.
+- **Comprobado con el simulador local:**
+  - lectura que falla siempre: 4 intentos y el error;
+  - cambio puntual en día pasado: envía `{ idTec, idUnidad, desde, hasta }`;
+  - cambio definitivo con el servidor fallando: un solo POST, el aviso de «servidor ocupado» y el borrador intacto;
+  - en la demostración, un cambio de un día: el técnico vuelve solo a su unidad al día siguiente.
 
 ## «Aplicar a todas las facturas de este proveedor» — hecho (encargo 8, Panel_Compras v1.18)
 

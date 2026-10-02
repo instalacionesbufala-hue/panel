@@ -31,7 +31,9 @@ const CLAVE_TESTIGO = 'bufala-panel-testigo';
 // Si Google no contesta en 30 s o devuelve su página de error, se reintenta una vez a los 4 s
 // (BACKEND.md v3.20.28: todas las escrituras son seguras de repetir).
 const ESPERA_MAX_MS = 30000;
-const PAUSA_REINTENTO_MS = 4000;
+// Lecturas: hasta 3 reintentos con 1-2 s de espera. Escrituras: ninguno a ciegas, para no duplicar un guardado.
+const REINTENTOS_LECTURA = 3;
+const pausaReintento = () => new Promise(r => setTimeout(r, 1000 + Math.random() * 1000));
 
 export class ErrorApi extends Error {
   // tipo: 'red' (no hay conexión), 'contrato' (respuesta que no cumple el contrato),
@@ -108,20 +110,34 @@ async function aProduccion(accion, opciones = {}) {
 
 // Un solo reintento, y solo para fallos de Google (página de error, sin respuesta o más de 30 s).
 // Un «no» del backend (ok:false) nunca se repite. La franja de conexión solo sale si falla el segundo.
+// Con el servidor ocupado, Google contesta a veces con su página de error (HTML, a veces un 404 de
+// script.googleusercontent.com) y el navegador lo ve como «Failed to fetch». Un «no» del backend (ok:false)
+// nunca se repite. La franja de conexión solo sale cuando ya no quedan intentos.
 async function conReintento(accion, opciones) {
-  try {
-    return await enviarAProduccion(accion, opciones);
-  } catch (e) {
-    if (!e.reintentable) throw e;
-    oyentesReintento.forEach(fn => fn(accion));
-    await new Promise(r => setTimeout(r, PAUSA_REINTENTO_MS));
+  const lectura = (opciones.metodo || 'GET') === 'GET';
+  for (let intento = 0; ; intento++) {
     try {
       return await enviarAProduccion(accion, opciones);
-    } catch (e2) {
-      if (e2.tipo === 'red') avisarConexion(false, e2.detalleConexion || '');
-      throw e2;
+    } catch (e) {
+      if (!e.reintentable) throw e;
+      if (lectura && intento < REINTENTOS_LECTURA) {
+        if (intento === 0) oyentesReintento.forEach(fn => fn(accion));
+        await pausaReintento();
+        continue;
+      }
+      if (e.tipo === 'red') avisarConexion(false, e.detalleConexion || '');
+      if (!lectura) throw escrituraSinRespuesta(e);
+      throw e;
     }
   }
+}
+// En una escritura no se sabe si llegó a guardarse: no se repite sola y se dice qué hacer
+function escrituraSinRespuesta(e) {
+  const err = new ErrorApi(e.tiempoAgotado
+    ? 'El servidor no ha contestado a tiempo. Puede que se haya guardado: recarga la pantalla antes de volver a intentarlo.'
+    : 'El servidor está ocupado, vuelve a intentarlo en unos segundos.', e.tipo);
+  err.reintentable = false;
+  return err;
 }
 
 async function enviarAProduccion(accion, { metodo = 'GET', params = {}, cuerpo = null, conTestigo = true, testigoExplicito = null } = {}) {
@@ -159,6 +175,7 @@ async function enviarAProduccion(accion, { metodo = 'GET', params = {}, cuerpo =
         : 'No se puede contactar con el servidor, ni al reintentarlo. Si tienes conexión, suele ser un fallo momentáneo de Google: espera un minuto y vuelve a intentarlo. Lo que has escrito sigue en pantalla.',
       'red');
     err.reintentable = true;
+    err.tiempoAgotado = e.name === 'AbortError';
     err.detalleConexion = e.name === 'AbortError' ? 'El servidor tarda demasiado en responder.' : '';
     throw err;
   } finally {
@@ -624,12 +641,21 @@ function demoResponder(accion, params, p) {
         }
         poner(demo.unidades, 'id', u);
       }
+      if (nuevas.some(a => a.hasta && !a.idTec)) return { ok: false, error: 'El periodo «hasta» solo vale para técnicos, no para furgonetas.' };
+      if (nuevas.some(a => a.hasta && a.hasta < a.desde)) return { ok: false, error: 'La fecha «hasta» no puede ser anterior a «desde».' };
+      const diaDespues = iso => { const [y, m, d] = iso.split('-').map(Number); return aIso(new Date(y, m - 1, d + 1)); };
       for (const a of nuevas) {
-        for (const v of demo.asignaciones) {
+        const tramosPosteriores = [];
+        for (const v of [...demo.asignaciones]) {
           const mismo = a.idTec ? v.idTec === a.idTec : (!v.idTec && v.idUnidad === a.idUnidad);
-          if (mismo && vig(v.desde, v.hasta, a.desde)) v.hasta = diaAntes(a.desde);
+          if (!mismo || !vig(v.desde, v.hasta, a.desde)) continue;
+          // Puntual: lo que tenía vuelve al día siguiente del «hasta»
+          if (a.hasta && (!v.hasta || v.hasta > a.hasta)) tramosPosteriores.push({ ...v, desde: diaDespues(a.hasta), derivada: undefined });
+          if (v.desde && v.desde >= a.desde) demo.asignaciones.splice(demo.asignaciones.indexOf(v), 1);
+          else v.hasta = diaAntes(a.desde);
         }
-        if (a.idUnidad) demo.asignaciones.push(a);
+        if (a.idUnidad) demo.asignaciones.push({ ...a, hasta: a.hasta || null });
+        demo.asignaciones.push(...tramosPosteriores);
       }
       return { ok: true, accion, avisos: [], ids: asignados };
     }

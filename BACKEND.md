@@ -60,7 +60,7 @@ Solo lectura: no escribe nada en la hoja. Devuelve siempre `accion: "panelConfig
     { "idTec": null, "idUnidad": "Búfala 1", "matricula": "2690NKC",
       "desde": null, "hasta": null, "derivada": true }
   ],
-  "limites": { "tecnicosPorUnidad": 2 },
+  "limites": { "tecnicosPorUnidad": 3, "tecnicosCompleta": 2 },
   "tramos": [],
   "ejercicio": { "anio": 2026, "jornadaAnual": 1770 },
   "cache": false
@@ -146,6 +146,18 @@ César necesita registrar cambios que ya ocurrieron (un día que se le pasó apu
    En el resumen de cambios sin guardar, que se vea «del X al Y» o «desde X».
 3. **Enseñar el `error` del servidor tal cual** cuando rechace (mes cerrado, fechas al revés) y los `avisos` como hasta ahora.
 4. **Reintentos en `api.js`.** Con el servidor ocupado, Google contesta a veces con su página de error (código 200 pero HTML, o 404 de `script.googleusercontent.com`), y el navegador lo ve como «Failed to fetch». Para **lecturas** (GET): reintentar hasta 3 veces, con 1-2 s de espera, cuando falle la red, llegue un 404 o la respuesta no sea JSON. Para **escrituras** (POST): no reintentar a ciegas; mostrar «El servidor está ocupado, vuelve a intentarlo en unos segundos». Así no se duplica un guardado.
+
+### Hasta 3 técnicos por equipo — YA EN PRODUCCIÓN (Panel Config v1.6.2, 03/10/2026)
+
+Lo normal son equipos de 1 o 2 técnicos, pero hay temporadas (2-3 semanas) con tres. `panelConfig.limites` trae ahora dos números:
+
+- `tecnicosPorUnidad: 3` → **máximo** que se puede poner en una unidad (antes 2). Vale para cambios puntuales y definitivos.
+- `tecnicosCompleta: 2` → con cuántos cuenta una brigada como **«completa»** en el resumen del día.
+
+**ENCARGO PARA EL PANEL (`js/unidades.js`)**
+1. El bloqueo al añadir técnicos sigue usando `tecnicosPorUnidad` (ahora deja el tercero).
+2. El KPI «Brigadas completas» debe contar con `tecnicosCompleta` (una brigada con 2 o 3 técnicos está completa). Hoy usa el máximo y, con el máximo en 3, contaría como incompletas las de 2. Si `tecnicosCompleta` no viene, usar `tecnicosPorUnidad` como hasta ahora.
+3. Con 3 técnicos en una unidad, un aviso suave (no bloqueante): «Búfala N tendrá 3 técnicos: lo normal son 1 o 2».
 
 ## Compras — `panelCompras`
 

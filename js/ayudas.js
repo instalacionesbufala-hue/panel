@@ -1,6 +1,6 @@
 // Iconos de ayuda «i» (BACKEND.md, encargo 7): una o dos líneas, sin jerga, con qué mide cada cosa y cómo se calcula.
 // La ventana flotante es una sola, con posición fija sobre la ventana: así no la recortan los contenedores con scroll.
-import { esc } from './ui.js?v=27';
+import { esc } from './ui.js?v=28';
 
 // Textos. Los marcados como obligatorios vienen tal cual del encargo del backend.
 export const AYUDA = {
@@ -14,7 +14,7 @@ export const AYUDA = {
   datoManual: 'Este dato no lo registra el sistema.',
   // Panel
   plantilla: 'Técnicos con unidad el día elegido, de todos los que están de alta ese día.',
-  brigadasCompletas: 'Brigadas con el máximo de técnicos que admite el servidor.',
+  brigadasCompletas: 'Brigadas con todos los técnicos que necesitan según el servidor.',
   cambiosSinGuardar: 'Movimientos hechos en esta pantalla que aún no se han enviado. Valen desde la fecha elegida.',
   vehiculosEnUso: 'Vehículos asignados a alguna unidad el día elegido, de todos los que están en servicio.',
   noProductivas: 'SAT y Estructura: sin límite de técnicos y fuera del cálculo del variable.',

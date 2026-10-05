@@ -396,7 +396,7 @@ function crearDemo() {
     ],
     tramos: [],   // llega vacío hasta que exista el motor de liquidación
     ejercicio: { anio: Number(A), jornadaAnual: 1770 },
-    limites: { tecnicosPorUnidad: 2 },
+    limites: { tecnicosPorUnidad: 3, tecnicosCompleta: 2 },
     // Forma de BACKEND.md: objetos { valor, etiqueta }, sin sinClasificar
     tiposProveedor: [
       { valor: 'combustible', etiqueta: 'Combustible' }, { valor: 'material', etiqueta: 'Material' },

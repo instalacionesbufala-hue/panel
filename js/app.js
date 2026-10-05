@@ -1,14 +1,14 @@
 // Entrada del panel: navegación, pantalla de acceso y aviso de conexión.
-import * as api from './api.js?v=27';
-import { mesActual, avisar } from './ui.js?v=27';
-import { activarAyudas } from './ayudas.js?v=27';
-import * as unidades from './unidades.js?v=27';
-import * as combustible from './combustible.js?v=27';
-import * as costes from './costes.js?v=27';
-import * as maestros from './tecnicos.js?v=27';
-import * as liquidacion from './liquidacion.js?v=27';
-import * as ausencias from './ausencias.js?v=27';
-import * as configuracion from './configuracion.js?v=27';
+import * as api from './api.js?v=28';
+import { mesActual, avisar } from './ui.js?v=28';
+import { activarAyudas } from './ayudas.js?v=28';
+import * as unidades from './unidades.js?v=28';
+import * as combustible from './combustible.js?v=28';
+import * as costes from './costes.js?v=28';
+import * as maestros from './tecnicos.js?v=28';
+import * as liquidacion from './liquidacion.js?v=28';
+import * as ausencias from './ausencias.js?v=28';
+import * as configuracion from './configuracion.js?v=28';
 
 const VISTAS = { unidades, combustible, costes, ausencias, maestros, liquidacion, configuracion };
 const VISTA_INICIAL = 'unidades';

@@ -1,8 +1,8 @@
 // Pantalla de unidades: formar unidades arrastrando técnicos y vehículos.
-import * as api from './api.js?v=27';
-import { esc, fecha, hoy, vigente, avisar, preguntar, cajaError, listaAvisos } from './ui.js?v=27';
-import * as regimen from './regimen.js?v=27';
-import { ayuda, AYUDA } from './ayudas.js?v=27';
+import * as api from './api.js?v=28';
+import { esc, fecha, hoy, vigente, avisar, preguntar, cajaError, listaAvisos } from './ui.js?v=28';
+import * as regimen from './regimen.js?v=28';
+import { ayuda, AYUDA } from './ayudas.js?v=28';
 
 const LIBRE = '__libre__';
 // El rol no restringe nada (BACKEND.md): cualquier técnico va a cualquier unidad. Solo se avisa
@@ -159,6 +159,9 @@ export function montar(el) {
     }
   }
 
+  // Con cuántos técnicos cuenta una brigada como completa (BACKEND.md: tecnicosCompleta; si falta, el máximo)
+  const completaCon = () => cfg.limites?.tecnicosCompleta || cfg.limites?.tecnicosPorUnidad || 0;
+
   async function soltar(tipo, id, destino) {
     // Si mientras se confirma cambia el día o se recarga el borrador, la confirmación ya no vale
     const miBorrador = borrador;
@@ -182,7 +185,11 @@ export function montar(el) {
       const periodo = await preguntarCambio(t, origen, destino, destino === LIBRE ? [] : avisosFuturos(id, destino));
       if (!periodo || !sigueIgual()) return;
       if (origen) borrador.get(origen).tecs = borrador.get(origen).tecs.filter(x => x !== id);
-      if (destino !== LIBRE) borrador.get(destino).tecs.push(id);
+      if (destino !== LIBRE) {
+        borrador.get(destino).tecs.push(id);
+        const n = borrador.get(destino).tecs.length;
+        if (!esNoProductiva(unidad(destino)) && n > completaCon()) avisar(`«${nombreUnidad(destino)}» tendrá ${n} técnicos: lo normal son 1 o 2.`, 'info');
+      }
       // Si vuelve a donde estaba según el servidor, ya no hay cambio que guardar
       if (unidadDeTec(base, id) === unidadDeTec(borrador, id)) periodos.delete(id);
       else periodos.set(id, periodo);
@@ -286,7 +293,7 @@ export function montar(el) {
               <article class="unidad ${unidadCambiada(u) ? 'cambiada' : ''} ${esNoProductiva(unidad(u)) ? 'no-productiva' : ''}">
                 <header><h3>${esc(nombreUnidad(u))}</h3>
                   ${unidad(u)?.computaVariable === false ? '<span class="insignia rosa" title="Esta unidad y sus técnicos quedan fuera del cálculo del variable">no computa variable</span>' : ''}
-                  <span class="insignia">${c.tecs.length === 0 ? 'sin técnicos' : c.tecs.length === 1 ? '1 técnico' : c.tecs.length + ' técnicos'}</span></header>
+                  <span class="insignia${!esNoProductiva(unidad(u)) && completaCon() && c.tecs.length > completaCon() ? ' aviso' : ''}">${c.tecs.length === 0 ? 'sin técnicos' : c.tecs.length === 1 ? '1 técnico' : c.tecs.length + ' técnicos'}</span></header>
                 <div class="fila-regimen">${insigniaRegimen(u)}${ayuda(AYUDA.regimen)}</div>
                 ${c.choques.length ? `<p class="insignia error">Dato incoherente en el servidor: ${esc(c.choques.join('; '))}</p>` : ''}
                 <div class="hueco" data-unidad="${esc(u)}" data-acepta="tec">
@@ -302,8 +309,11 @@ export function montar(el) {
     const noProductivas = [...borrador].filter(([u]) => esNoProductiva(unidad(u)));
     // Resumen del día (solo recuentos de la composición, ningún importe)
     const totalTec = tecnicosVisibles().length, totalVeh = vehiculosVisibles().length;
-    const limite = cfg.limites?.tecnicosPorUnidad;
-    const completas = brigadas.filter(([, c]) => limite ? c.tecs.length >= limite : c.tecs.length > 0).length;
+    const completa = completaCon();
+    const completas = brigadas.filter(([, c]) => completa ? c.tecs.length >= completa : c.tecs.length > 0).length;
+    const ayudaCompletas = completa
+      ? `Brigadas con ${completa} técnico${completa === 1 ? '' : 's'} o más.${cfg.limites?.tecnicosPorUnidad ? ` El máximo por unidad es ${cfg.limites.tecnicosPorUnidad}.` : ''}`
+      : AYUDA.brigadasCompletas;
     const pct = (a, b) => b ? Math.round(a / b * 100) : 0;
     const r = 40, vuelta = 2 * Math.PI * r;
     const resumen = `<div class="bento" aria-label="Resumen del día">
@@ -317,7 +327,7 @@ export function montar(el) {
             <p>${libresTec.length ? `${libresTec.length} técnico${libresTec.length === 1 ? '' : 's'} sin unidad.` : 'Toda la plantilla tiene unidad.'}
               ${brigadas.filter(([, c]) => !c.tecs.length).length ? ' Hay brigadas vacías.' : ''}</p></div>
         </div>
-        <div class="kpi"><small>Brigadas completas ${ayuda(AYUDA.brigadasCompletas)}</small><div class="cifra">${completas}<span> / ${brigadas.length}</span></div>
+        <div class="kpi"><small>Brigadas completas ${ayuda(ayudaCompletas)}</small><div class="cifra">${completas}<span> / ${brigadas.length}</span></div>
           <div class="medidor"><i style="width:${pct(completas, brigadas.length)}%"></i></div></div>
         <div class="kpi ${filas.length ? 'aviso' : ''}"><small>Cambios sin guardar ${ayuda(AYUDA.cambiosSinGuardar)}</small>
           <div class="cifra">${filas.length}</div>

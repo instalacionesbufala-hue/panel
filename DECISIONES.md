@@ -1,6 +1,13 @@
 # Decisiones del panel y dudas para el backend
 
-**El contrato vive en [`BACKEND.md`](BACKEND.md)**, lo mantiene el backend y manda sobre este fichero. Aquí queda lo que decide el panel por su cuenta y lo que el panel pregunta. Revisado contra BACKEND.md **v3.20.79** (Panel Config v1.6) el 02/10/2026.
+**El contrato vive en [`BACKEND.md`](BACKEND.md)**, lo mantiene el backend y manda sobre este fichero. Aquí queda lo que decide el panel por su cuenta y lo que el panel pregunta. Revisado contra BACKEND.md **Panel Config v1.6.2** el 05/10/2026.
+
+## Hasta 3 técnicos por equipo — hecho (Panel Config v1.6.2)
+
+- **Máximo por unidad:** sigue saliendo de `limites.tecnicosPorUnidad` (ahora 3), así que ya deja poner el tercero. Al intentar el cuarto sale el mismo bloqueo de antes. Las no productivas siguen sin límite.
+- **«Brigadas completas»** cuenta las brigadas con `limites.tecnicosCompleta` técnicos o más (hoy 2: una brigada de 2 o de 3 está completa). Si `tecnicosCompleta` no viene, usa `tecnicosPorUnidad`, como antes. La «i» del KPI dice los dos números («Brigadas con 2 técnicos o más. El máximo por unidad es 3.»).
+- **Aviso suave, no bloqueante**, al dejar una brigada por encima de `tecnicosCompleta`: «Búfala N tendrá 3 técnicos: lo normal son 1 o 2.». Además, en la tarjeta de esa brigada el recuento («3 técnicos») sale en ámbar.
+- Los datos de demostración traen `limites: { tecnicosPorUnidad: 3, tecnicosCompleta: 2 }`.
 
 ## Cambios de técnicos con fecha pasada — hecho (backend v3.20.79 · Panel Config v1.6)
 

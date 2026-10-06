@@ -13,11 +13,11 @@
 - **Modo demo, cola, textos y lógica de cada pantalla: sin cambios.** `direccion.html` sigue hablando directamente con Apps Script.
 - Cada lectura deja en la consola del navegador `[panel] <clave> · vista|puente · N ms`, para medir.
 
-**Ping (decisión del panel, ver duda 1).** El panel sigue necesitando `accionesPanel` para saber qué es real y qué es demo, y el ping directo a Apps Script tarda 5-35 s. Por eso:
+**Ping (decisión del panel).** El panel sigue necesitando `accionesPanel` para saber qué es real y qué es demo, y el ping directo a Apps Script tarda 5-35 s. Por eso:
 - la última lista se recuerda en localStorage (`bufala-panel-acciones`; solo nombres de acciones, ningún dato) y se usa al momento;
 - la lista nueva llega por detrás y vale desde ese momento;
 - solo la primera visita en un navegador espera al ping;
-- si existe la fila `ping` en `vistas`, se lee de ahí y no se llama a Apps Script.
+- si existe la fila `ping` en `vistas`, se lee de ahí y no se llama a Apps Script (ya publicada: ver «Dudas del encargo 9»).
 
 **Probado en el simulador local** (imita Auth, `vistas` y el puente; nada contra producción):
 - contraseña mala → «Correo o contraseña incorrectos.»;
@@ -34,10 +34,10 @@
 - **Después**: en el simulador, abrir el panel 0,2-0,3 s y cambiar de pantalla 0,15-0,5 s por lectura.
 - **En producción: pendiente de medir.** Yo no entro con la contraseña real. Basta abrir el panel con la consola del navegador (F12) y cambiar entre Unidades, Combustible y Costes: cada lectura deja su línea con los milisegundos y si vino de `vistas` o del puente.
 
-## Dudas abiertas del encargo 9 (para el backend)
+## Dudas del encargo 9 — resueltas por BACKEND.md (06/10/2026, tarde) y aplicadas
 
-1. **Ping.** ¿Podéis publicar `ping` en `vistas` (clave `ping`, la misma respuesta de doGet) o dejar que el puente lo acepte? Así la primera visita en un navegador nuevo tampoco espera a Apps Script. El panel ya lee esa fila si existe.
-2. **`codigo:'ocupado'` en un guardado.** ¿Puede llegar cuando Google ya había recibido el guardado y se agotó el tiempo esperando la respuesta? En ese caso el mensaje correcto es «Puede que se haya guardado: recarga antes de reintentar», no «El servidor está ocupado». Ahora el panel solo usa el primero cuando él mismo se queda sin respuesta (90 s). Si el puente puede distinguirlo, un campo como `puedeHaberseGuardado: true` bastaría.
+1. **Ping publicado en `vistas`** (Supabase.gs v1.1). El panel ya no pregunta nada antes de entrar. Tras el acceso lee la fila `ping`, y si no existe, pregunta a Apps Script como antes. En la primera visita a un navegador, en el simulador, el panel salía en 0,38 s sin ninguna llamada a Apps Script.
+2. **`puedeHaberseGuardado: true`** (panel-puente v1.1). En un guardado, el recuadro dice «Guardado sin confirmar. El servidor no ha confirmado el guardado. Puede que se haya guardado: recarga la pantalla antes de volver a intentarlo.». Sale lo mismo cuando el navegador se queda sin respuesta. `ocupado` sin ese campo (solo en lecturas) sigue diciendo «El servidor está ocupado…». En ninguno de los dos casos se reintenta, y el borrador se conserva.
 
 ## Hasta 3 técnicos por equipo — hecho (Panel Config v1.6.2)
 

@@ -1,14 +1,14 @@
 // Entrada del panel: navegación, pantalla de acceso y aviso de conexión.
-import * as api from './api.js?v=29';
-import { mesActual, avisar } from './ui.js?v=29';
-import { activarAyudas } from './ayudas.js?v=29';
-import * as unidades from './unidades.js?v=29';
-import * as combustible from './combustible.js?v=29';
-import * as costes from './costes.js?v=29';
-import * as maestros from './tecnicos.js?v=29';
-import * as liquidacion from './liquidacion.js?v=29';
-import * as ausencias from './ausencias.js?v=29';
-import * as configuracion from './configuracion.js?v=29';
+import * as api from './api.js?v=30';
+import { mesActual, avisar } from './ui.js?v=30';
+import { activarAyudas } from './ayudas.js?v=30';
+import * as unidades from './unidades.js?v=30';
+import * as combustible from './combustible.js?v=30';
+import * as costes from './costes.js?v=30';
+import * as maestros from './tecnicos.js?v=30';
+import * as liquidacion from './liquidacion.js?v=30';
+import * as ausencias from './ausencias.js?v=30';
+import * as configuracion from './configuracion.js?v=30';
 
 const VISTAS = { unidades, combustible, costes, ausencias, maestros, liquidacion, configuracion };
 const VISTA_INICIAL = 'unidades';
@@ -105,7 +105,8 @@ function pintarFranjaDemo() {
         : 'El acceso es real, pero los datos son de ejemplo: lo que guardes se queda en esta pestaña y se pierde al recargar. No se envía nada al sistema de gestión.');
   }).catch(() => { /* sin conexión: ya lo avisa la franja de conexión; se reintenta al entrar */ });
 }
-pintarFranjaDemo();
+// Sin sesión no se pregunta: tras entrar, la lista sale de `vistas` y no hace falta esperar a Apps Script
+api.haySesion().then(s => { if (s) pintarFranjaDemo(); });
 
 $('#salir').addEventListener('click', async () => {
   if (vistaActual?.control?.pendiente?.() && !confirm('Hay cambios sin guardar. ¿Cerrar la sesión igualmente?')) return;

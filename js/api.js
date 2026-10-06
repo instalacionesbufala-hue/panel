@@ -178,6 +178,7 @@ function escrituraSinRespuesta(e) {
     ? 'El servidor no ha contestado a tiempo. Puede que se haya guardado: recarga la pantalla antes de volver a intentarlo.'
     : 'El servidor está ocupado, vuelve a intentarlo en unos segundos.', e.tipo);
   err.reintentable = false;
+  err.sinConfirmar = !!e.tiempoAgotado;
   return err;
 }
 function errorDeRed(e, ms) {
@@ -199,9 +200,13 @@ function validar(accion, datos, metodo) {
     if (esSesionCaducada(datos)) throw new ErrorApi(datos.error || 'La sesión ha caducado.', 'sesion');
     if (codigo === 'permiso') throw new ErrorApi('Tu usuario no tiene acceso al panel.', 'permiso');
     if (codigo === 'ocupado') {
-      // El puente ya ha reintentado las lecturas; los guardados no se repiten
-      const err = new ErrorApi('El servidor está ocupado, vuelve a intentarlo en unos segundos.', 'backend');
+      // El puente ya ha reintentado las lecturas; los guardados no se repiten. En un guardado, el puente no
+      // sabe si Apps Script llegó a aplicarlo (a veces termina bien y su respuesta se pierde): puedeHaberseGuardado.
+      const err = new ErrorApi(datos.puedeHaberseGuardado
+        ? 'El servidor no ha confirmado el guardado. Puede que se haya guardado: recarga la pantalla antes de volver a intentarlo.'
+        : 'El servidor está ocupado, vuelve a intentarlo en unos segundos.', 'backend');
       err.reintentable = false;
+      err.sinConfirmar = !!datos.puedeHaberseGuardado;
       throw err;
     }
     if (datos.rechazado) throw new ErrorApi(datos.error || `El servidor no admite la acción «${accion}».`, 'contrato');
@@ -413,7 +418,9 @@ export async function entrar(correo, clave) {
     throw new ErrorApi('No se ha podido comprobar el acceso. Comprueba la conexión y vuelve a intentarlo.', 'red');
   }
   if (!data?.session) throw new ErrorApi('El servidor no ha abierto la sesión.', 'contrato');
-  accionesEnProduccion();   // si no hay lista recordada, se pregunta ya, mientras se pinta la pantalla
+  // Sin lista recordada (primera visita en este navegador), se pregunta ya, ahora a la fila `ping` de `vistas`
+  if (!accionesRecordadas()) esperaAcciones = null;
+  accionesEnProduccion();
   return data;
 }
 

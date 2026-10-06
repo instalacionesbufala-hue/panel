@@ -1,8 +1,8 @@
 // Pantalla de unidades: formar unidades arrastrando técnicos y vehículos.
-import * as api from './api.js?v=29';
-import { esc, fecha, hoy, vigente, avisar, preguntar, cajaError, listaAvisos } from './ui.js?v=29';
-import * as regimen from './regimen.js?v=29';
-import { ayuda, AYUDA } from './ayudas.js?v=29';
+import * as api from './api.js?v=30';
+import { esc, fecha, hoy, vigente, avisar, preguntar, cajaError, listaAvisos } from './ui.js?v=30';
+import * as regimen from './regimen.js?v=30';
+import { ayuda, AYUDA } from './ayudas.js?v=30';
 
 const LIBRE = '__libre__';
 // El rol no restringe nada (BACKEND.md): cualquier técnico va a cualquier unidad. Solo se avisa

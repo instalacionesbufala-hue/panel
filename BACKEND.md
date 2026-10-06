@@ -3,6 +3,62 @@
 Lo mantiene el backend. **Si algo de aquí contradice a `DECISIONES.md`, manda este fichero.**
 Última actualización: 25/09/2026 · backend **v3.20.28** (`Panel_Config.gs` v1.4, `Panel_Compras.gs` v1.15, `Panel_Costes.gs` v1.2).
 
+## ⚡ ENCARGO NUEVO 9 — El panel lee de Supabase (06/10/2026) · PRIORIDAD MÁXIMA
+
+**Por qué.** Medido el 06/10: Apps Script como servidor web tarda 5-35 s por petición y a veces devuelve 404 de `script.googleusercontent.com` (arranque en frío de un proyecto de 1,2 MB; fallo conocido de Google). En el servidor la ejecución dura 2-8 s: el resto se pierde en la infraestructura de Google y no se arregla desde el código. Solución: **las pantallas leen de Supabase** (0,2-0,5 s); Apps Script sigue siendo el origen de todo y solo **publica** ahí la respuesta ya preparada de cada pantalla.
+
+**Proyecto Supabase «panel-bufala»** (independiente del almacén)
+- URL: `https://yqdhvwnupdqyfifagmfx.supabase.co`
+- Clave pública (va en el código, es pública por diseño): `sb_publishable_zCv7-uFUpBrNFpSSJkJeWA_zdHmnM5k`
+- Sin sesión **no se lee ni se escribe nada** (comprobado: HTTP 401 en las dos tablas). Registro libre desactivado.
+- Usuario de César: `instalacionesbufala@gmail.com`, rol `gerencia` (tabla `usuarios_panel`).
+
+**1 · Inicio de sesión → Supabase Auth**
+- `supabase-js` v2 (script UMD desde jsDelivr o el ESM que ya uséis en el almacén). `signInWithPassword({ email, password })`. La sesión la guarda y renueva `supabase-js`.
+- Sustituye al acceso actual con `panelLogin`: el panel deja de usar el token de Apps Script.
+- Si una respuesta trae `codigo: 'sesion'` o la sesión caduca → volver a la pantalla de acceso.
+- Error `codigo: 'permiso'` → «Tu usuario no tiene acceso al panel».
+
+**2 · Lecturas → tabla `vistas`** (`clave` text, `datos` jsonb = la respuesta EXACTA de doGet, `actualizado` timestamptz)
+```js
+const { data } = await sb.from('vistas').select('datos, actualizado').eq('clave', clave).maybeSingle();
+```
+Claves publicadas (mismos parámetros que hoy):
+
+| Acción | Clave |
+|---|---|
+| `panelConfig` | `panelConfig` |
+| `panelCompras(mes)` | `panelCompras:<mes>` (mes actual y anterior) |
+| `panelCostes(desde, hasta)` | `panelCostes:<desde>:<hasta>` (los 6 meses de `mesesHistorico()` hasta el mes actual) |
+| `panelLiquidacion(mes)` | `panelLiquidacion:<mes>` (mes actual y anterior) |
+| `panelAusencias(desde, hasta)` | `panelAusencias:<desde>:<hasta>` (año en curso: `AAAA-01-01:AAAA-12-31`) |
+| `panelFestivos(anio)` | `panelFestivos:<anio>` |
+| `panelPrecios` | `panelPrecios` |
+| `panelParametrosUnidades` | `panelParametrosUnidades` |
+
+- **Si la fila no existe** (un mes antiguo, otro rango) → leer por el puente (punto 3) con la misma acción y parámetros. Nada deja de funcionar.
+- Enseñar discretamente «Datos de hace X min» con `actualizado`.
+- Se republican solas: tras cada guardado (unos 2-3 min después, con el recálculo), tras cada lote de cierres y cada hora de 7 a 22 h.
+
+**3 · Guardados y lecturas no publicadas → función `panel-puente`**
+```js
+const { data: { session } } = await sb.auth.getSession();
+const r = await fetch('https://yqdhvwnupdqyfifagmfx.supabase.co/functions/v1/panel-puente', {
+  method: 'POST',
+  headers: { 'Content-Type': 'application/json', Authorization: 'Bearer ' + session.access_token, apikey: CLAVE_PUBLICA },
+  body: JSON.stringify({ metodo: 'POST', accion: 'panelGuardarConfig', cuerpo: { asignaciones: [...] } })
+  // lectura: { metodo: 'GET', accion: 'panelCompras', params: { mes: '2026-07' } }
+});
+const datos = await r.json();   // la misma respuesta que daba Apps Script
+```
+- La función comprueba sesión y rol, reenvía a Apps Script y devuelve su respuesta tal cual. Solo acepta acciones `panel…`.
+- **Lecturas: reintenta ella sola** si Google falla. **Guardados: no reintenta** (para no duplicar); si llega `codigo: 'ocupado'`, mantener el mensaje actual («El servidor está ocupado…» / «Puede que se haya guardado: recarga antes de reintentar»).
+- **Tras un guardado**, la pantalla afectada (el mapa de `api.js` líneas 218-226) se lee **por el puente durante 5 minutos**, no de `vistas`, para ver el cambio al momento mientras se republica.
+
+**4 · Lo que NO cambia:** el modo demo, la cola de una petición a la vez para el puente (Apps Script sigue atendiendo de una en una), los textos y la lógica de cada pantalla. La página de la Dirección (`direccion…`) sigue como está por ahora.
+
+**5 · Al terminar,** dejad en DECISIONES.md: tiempo de abrir el panel y de cambiar entre 3 pantallas, antes y después.
+
 ## Cómo saber qué está disponible
 
 `GET ?action=ping` → `{ ok, version, ahora, dashGen, panel: true, accionesPanel: [ ... ] }`

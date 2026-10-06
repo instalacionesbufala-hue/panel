@@ -1,6 +1,43 @@
 # Decisiones del panel y dudas para el backend
 
-**El contrato vive en [`BACKEND.md`](BACKEND.md)**, lo mantiene el backend y manda sobre este fichero. Aquí queda lo que decide el panel por su cuenta y lo que el panel pregunta. Revisado contra BACKEND.md **Panel Config v1.6.2** el 05/10/2026.
+**El contrato vive en [`BACKEND.md`](BACKEND.md)**, lo mantiene el backend y manda sobre este fichero. Aquí queda lo que decide el panel por su cuenta y lo que el panel pregunta. Revisado contra BACKEND.md (encargo 9, Supabase) el 06/10/2026.
+
+## Encargo 9 · El panel lee de Supabase — hecho (06/10/2026)
+
+**Qué hace el panel ahora** (todo en `js/api.js`; las pantallas no cambian):
+- **Acceso con Supabase Auth**: correo + contraseña (`signInWithPassword`), con supabase-js 2.117.2 (la misma versión que el almacén) en ESM desde jsDelivr, cargado solo cuando hace falta. La sesión la guarda y renueva supabase-js en **sessionStorage** (`bufala-panel-sesion`), como el testigo de antes: dura lo que la pestaña. El panel ya no usa `panelLogin` ni el testigo de Apps Script. Mensajes: «Correo o contraseña incorrectos.», `codigo:'sesion'` o 401 → vuelve a pedir el acceso encima de la pantalla y repite la llamada, y `codigo:'permiso'` → «Tu usuario no tiene acceso al panel.».
+- **Lecturas**: primero `vistas` con la clave de la tabla de BACKEND.md. Si la fila no está, o Supabase falla, se lee por `panel-puente` con la misma acción y los mismos parámetros. Las lecturas de `vistas` no hacen cola; el puente sí, de una en una.
+- **Guardados** por `panel-puente`. No se reintentan. `codigo:'ocupado'` → «El servidor está ocupado, vuelve a intentarlo en unos segundos.»; sin respuesta en 90 s → «Puede que se haya guardado: recarga…». El borrador se conserva.
+- **Tras un guardado**, la lectura afectada (mapa `LECTURA_DE`) va por el puente durante 5 minutos.
+- **«Datos de hace X min»**: una etiqueta discreta abajo a la izquierda, con la copia más antigua de las que usa la pantalla; «Datos al momento» si viene del puente.
+- **Modo demo, cola, textos y lógica de cada pantalla: sin cambios.** `direccion.html` sigue hablando directamente con Apps Script.
+- Cada lectura deja en la consola del navegador `[panel] <clave> · vista|puente · N ms`, para medir.
+
+**Ping (decisión del panel, ver duda 1).** El panel sigue necesitando `accionesPanel` para saber qué es real y qué es demo, y el ping directo a Apps Script tarda 5-35 s. Por eso:
+- la última lista se recuerda en localStorage (`bufala-panel-acciones`; solo nombres de acciones, ningún dato) y se usa al momento;
+- la lista nueva llega por detrás y vale desde ese momento;
+- solo la primera visita en un navegador espera al ping;
+- si existe la fila `ping` en `vistas`, se lee de ahí y no se llama a Apps Script.
+
+**Probado en el simulador local** (imita Auth, `vistas` y el puente; nada contra producción):
+- contraseña mala → «Correo o contraseña incorrectos.»;
+- acceso → Unidades pintada en 0,2 s desde `vistas` («Datos de hace 7 min»);
+- recarga con sesión → 0,3 s, sin pedir acceso;
+- guardar → 1 POST por el puente y la relectura de panelConfig por el puente («Datos al momento»);
+- vista sin publicar → puente;
+- `ocupado` en un guardado → mensaje y borrador intacto, 1 solo POST;
+- sesión anulada → pide el acceso con «La sesión ha caducado…» y sigue;
+- la página de la Dirección funciona igual.
+
+**Tiempos antes y después (punto 5).**
+- **Antes** (BACKEND.md, 06/10): 5-35 s por petición. Abrir el panel = ping + panelConfig en cola (10-70 s); cambiar a otra pantalla = 1-3 peticiones más.
+- **Después**: en el simulador, abrir el panel 0,2-0,3 s y cambiar de pantalla 0,15-0,5 s por lectura.
+- **En producción: pendiente de medir.** Yo no entro con la contraseña real. Basta abrir el panel con la consola del navegador (F12) y cambiar entre Unidades, Combustible y Costes: cada lectura deja su línea con los milisegundos y si vino de `vistas` o del puente.
+
+## Dudas abiertas del encargo 9 (para el backend)
+
+1. **Ping.** ¿Podéis publicar `ping` en `vistas` (clave `ping`, la misma respuesta de doGet) o dejar que el puente lo acepte? Así la primera visita en un navegador nuevo tampoco espera a Apps Script. El panel ya lee esa fila si existe.
+2. **`codigo:'ocupado'` en un guardado.** ¿Puede llegar cuando Google ya había recibido el guardado y se agotó el tiempo esperando la respuesta? En ese caso el mensaje correcto es «Puede que se haya guardado: recarga antes de reintentar», no «El servidor está ocupado». Ahora el panel solo usa el primero cuando él mismo se queda sin respuesta (90 s). Si el puente puede distinguirlo, un campo como `puedeHaberseGuardado: true` bastaría.
 
 ## Hasta 3 técnicos por equipo — hecho (Panel Config v1.6.2)
 

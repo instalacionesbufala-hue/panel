@@ -1,14 +1,14 @@
 // Entrada del panel: navegación, pantalla de acceso y aviso de conexión.
-import * as api from './api.js?v=28';
-import { mesActual, avisar } from './ui.js?v=28';
-import { activarAyudas } from './ayudas.js?v=28';
-import * as unidades from './unidades.js?v=28';
-import * as combustible from './combustible.js?v=28';
-import * as costes from './costes.js?v=28';
-import * as maestros from './tecnicos.js?v=28';
-import * as liquidacion from './liquidacion.js?v=28';
-import * as ausencias from './ausencias.js?v=28';
-import * as configuracion from './configuracion.js?v=28';
+import * as api from './api.js?v=29';
+import { mesActual, avisar } from './ui.js?v=29';
+import { activarAyudas } from './ayudas.js?v=29';
+import * as unidades from './unidades.js?v=29';
+import * as combustible from './combustible.js?v=29';
+import * as costes from './costes.js?v=29';
+import * as maestros from './tecnicos.js?v=29';
+import * as liquidacion from './liquidacion.js?v=29';
+import * as ausencias from './ausencias.js?v=29';
+import * as configuracion from './configuracion.js?v=29';
 
 const VISTAS = { unidades, combustible, costes, ausencias, maestros, liquidacion, configuracion };
 const VISTA_INICIAL = 'unidades';
@@ -23,12 +23,12 @@ let esperaAcceso = null;
 function pedirAcceso(motivo) {
   if (esperaAcceso) return esperaAcceso;
   const capa = $('#acceso');
-  $('#acceso-motivo').textContent = motivo || 'Introduce la contraseña del panel.';
+  $('#acceso-motivo').textContent = motivo || 'Introduce tu correo y tu contraseña.';
   $('#acceso-error').hidden = true;
   $('#clave').value = '';
   capa.hidden = false;
   $('#salir').hidden = true;
-  setTimeout(() => $('#clave').focus(), 0);
+  setTimeout(() => ($('#correo').value ? $('#clave') : $('#correo')).focus(), 0);
   esperaAcceso = new Promise(resolver => { capa._resolver = resolver; });
   return esperaAcceso;
 }
@@ -40,7 +40,7 @@ $('#form-acceso').addEventListener('submit', async ev => {
   boton.disabled = true;
   boton.textContent = 'Comprobando…';
   try {
-    await api.entrar(clave);
+    await api.entrar($('#correo').value, clave);
     pintarFranjaDemo();
     $('#clave').value = '';
     $('#acceso').hidden = true;
@@ -50,7 +50,7 @@ $('#form-acceso').addEventListener('submit', async ev => {
     resolver && resolver();
   } catch (e) {
     const err = $('#acceso-error');
-    err.textContent = e.tipo === 'backend' ? (e.message || 'Contraseña incorrecta.') : e.message;
+    err.textContent = e.tipo === 'backend' ? (e.message || 'Correo o contraseña incorrectos.') : e.message;
     err.hidden = false;
     $('#clave').select();
   } finally {
@@ -107,12 +107,36 @@ function pintarFranjaDemo() {
 }
 pintarFranjaDemo();
 
-$('#salir').addEventListener('click', () => {
+$('#salir').addEventListener('click', async () => {
   if (vistaActual?.control?.pendiente?.() && !confirm('Hay cambios sin guardar. ¿Cerrar la sesión igualmente?')) return;
-  api.cerrarSesion();
+  await api.cerrarSesion();
   location.hash = '#' + VISTA_INICIAL;
   location.reload();
 });
+
+// ── De cuándo son los datos ───────────────────────────
+// Las pantallas leen la copia que el backend publica en Supabase (tras cada guardado y cada hora de 7 a 22 h).
+// Se enseña la más antigua entre la última lectura de cada dato de la pantalla actual; lo leído por el puente es «al momento».
+const leidos = new Map();   // acción → hora de la copia (null: al momento)
+function pintarFrescura() {
+  const p = $('#frescura');
+  if (!leidos.size) { p.hidden = true; return; }
+  const horas = [...leidos.values()].filter(h => h !== null);
+  const datosDe = horas.length ? Math.min(...horas) : null;
+  const min = datosDe === null ? 0 : Math.floor((Date.now() - datosDe) / 60000);
+  p.textContent = datosDe === null || min < 1 ? 'Datos al momento'
+    : min < 60 ? `Datos de hace ${min} min`
+    : `Datos de hace ${Math.floor(min / 60)} h${min % 60 ? ' ' + (min % 60) + ' min' : ''}`;
+  p.title = 'El servidor publica una copia de cada pantalla tras cada guardado y cada hora de 7 a 22 h. Tras guardar, la pantalla se lee directamente durante 5 minutos.';
+  p.hidden = false;
+}
+api.alLeerDatos(({ accion, actualizado }) => {
+  // Las compras del mes se leen por detrás para el contador del menú: solo cuentan en Combustible
+  if (accion === 'panelCompras' && nombreActual !== 'combustible') return;
+  leidos.set(accion, actualizado ? Date.parse(actualizado) : null);
+  pintarFrescura();
+});
+setInterval(pintarFrescura, 30000);
 
 // ── Aviso de conexión ─────────────────────────────────
 api.alCambiarConexion((ok, detalle) => {
@@ -137,6 +161,8 @@ async function mostrar(nombre) {
     if (a.dataset.vista === nombre) a.setAttribute('aria-current', 'page');
     else a.removeAttribute('aria-current');
   });
+  leidos.clear();
+  pintarFrescura();
   const el = $('#vista');
   el.innerHTML = '<p class="cargando">Cargando…</p>';
   const control = VISTAS[nombre].montar(el) || {};
@@ -157,9 +183,9 @@ window.addEventListener('beforeunload', ev => {
   if (vistaActual?.control?.pendiente?.()) { ev.preventDefault(); ev.returnValue = ''; }
 });
 
-// Arranque: sin sesión, primero la contraseña.
+// Arranque: sin sesión, primero el acceso.
 (async function arrancar() {
-  if (!api.haySesion()) await pedirAcceso();
+  if (!(await api.haySesion())) await pedirAcceso();
   else $('#salir').hidden = false;
   mostrar(nombreDesdeHash());
   if (nombreActual !== 'combustible') leerPendientes();   // Combustible ya lo lee por su cuenta

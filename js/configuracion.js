@@ -1,7 +1,7 @@
 // Pantalla de configuración: festivos (solo consulta: mandan en Holded) y precios de coste de material (editables).
-import * as api from './api.js?v=28';
-import { ayuda, AYUDA } from './ayudas.js?v=28';
-import { esc, eur, fecha, hoy, leerImporte, importeEditable, avisar, preguntar, cajaError, listaAvisos } from './ui.js?v=28';
+import * as api from './api.js?v=29';
+import { ayuda, AYUDA } from './ayudas.js?v=29';
+import { esc, eur, fecha, hoy, leerImporte, importeEditable, avisar, preguntar, cajaError, listaAvisos } from './ui.js?v=29';
 
 const DIAS = ['domingo', 'lunes', 'martes', 'miércoles', 'jueves', 'viernes', 'sábado'];
 const diaSemana = iso => new Date(iso + 'T12:00').getDay();

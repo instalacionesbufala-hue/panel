@@ -1,7 +1,13 @@
 // Única capa que habla con el backend. Ningún otro módulo hace fetch.
 
-// URL de la implementación activa de Apps Script. Es el único sitio donde se configura.
+// URL de la implementación activa de Apps Script. Desde el encargo 9 el panel solo la usa para el ping
+// (qué acciones están en producción); la página de la Dirección sigue hablando con ella directamente.
 export const URL_BACKEND = 'https://script.google.com/macros/s/AKfycbxMMeyP9g75p1lxytithxeFfQVbe0cXV3aFHlJObfI05ewIN1mtTxPYBNPYp--BPKc9tw/exec';
+// Supabase «panel-bufala» (BACKEND.md, encargo 9): acceso, lecturas publicadas (`vistas`) y el puente a Apps Script.
+// La clave es la pública: va en el código por diseño; sin sesión no se lee ni se escribe nada.
+export const URL_SUPABASE = 'https://yqdhvwnupdqyfifagmfx.supabase.co';
+const CLAVE_PUBLICA = 'sb_publishable_zCv7-uFUpBrNFpSSJkJeWA_zdHmnM5k';
+const MODULO_SUPABASE = 'https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.117.2/+esm';
 
 // Acciones del panel que conoce esta interfaz.
 export const TODAS = ['panelLogin', 'panelConfig', 'panelCompras', 'panelLiquidacion', 'panelCostes', 'panelGuardarConfig',
@@ -16,61 +22,95 @@ export const TODAS_DIRECCION = ['direccionLogin', 'direccionIndicadores', 'direc
 // { panel: true, accionesPanel: [...] }. Las que figuren ahí van a producción; el resto se
 // sirve en modo demostración con los datos de ejemplo de más abajo. Así no hay que tocar
 // este fichero cada vez que el backend añade una acción.
-// Se pregunta una vez por carga de página; si falla, se vuelve a intentar en la siguiente llamada.
+// El ping a Apps Script tarda 5-35 s, así que la última lista se recuerda en el navegador (solo nombres
+// de acciones) y se usa al momento; la nueva llega por detrás y vale desde ese momento.
+// Si el backend publica la fila `ping` en `vistas`, se lee de ahí; si no, se pregunta a Apps Script.
+const CLAVE_ACCIONES = 'bufala-panel-acciones';
 let esperaAcciones = null;
+const filtrarAcciones = r => new Set(r && r.panel === true && Array.isArray(r.accionesPanel)
+  ? r.accionesPanel.filter(a => TODAS.includes(a) || TODAS_DIRECCION.includes(a)) : []);
+function accionesRecordadas() {
+  try { const l = JSON.parse(localStorage.getItem(CLAVE_ACCIONES) || 'null'); return Array.isArray(l) ? new Set(l) : null; } catch { return null; }
+}
+function recordarAcciones(set) {
+  try { localStorage.setItem(CLAVE_ACCIONES, JSON.stringify([...set])); } catch { /* sin almacenamiento: se pregunta en cada carga */ }
+}
+async function preguntarAcciones() {
+  if (haySesionGuardada()) {
+    const fila = await leerVista('ping').catch(() => null);
+    if (fila) return filtrarAcciones(fila.datos);
+  }
+  return filtrarAcciones(await aAppsScript('ping', { conTestigo: false }));
+}
 export function accionesEnProduccion() {
   if (!esperaAcciones) {
-    esperaAcciones = aProduccion('ping', { conTestigo: false })
-      .then(r => new Set(r.panel === true && Array.isArray(r.accionesPanel) ? r.accionesPanel.filter(a => TODAS.includes(a) || TODAS_DIRECCION.includes(a)) : []))
-      .catch(e => { esperaAcciones = null; throw e; });
+    const recordadas = accionesRecordadas();
+    const nuevas = preguntarAcciones();
+    esperaAcciones = recordadas ? Promise.resolve(recordadas) : nuevas;
+    nuevas.then(set => { recordarAcciones(set); esperaAcciones = Promise.resolve(set); },
+      () => { if (!recordadas) esperaAcciones = null; });   // sin lista: se vuelve a preguntar en la siguiente llamada
   }
   return esperaAcciones;
 }
 
-const CLAVE_TESTIGO = 'bufala-panel-testigo';
-// Si Google no contesta en 30 s o devuelve su página de error, se reintenta una vez a los 4 s
-// (BACKEND.md v3.20.28: todas las escrituras son seguras de repetir).
+// Si Google no contesta en 30 s o devuelve su página de error, se reintenta (solo lecturas).
 const ESPERA_MAX_MS = 30000;
+// El puente espera a Apps Script y reintenta él solo las lecturas: se le da más margen.
+const ESPERA_PUENTE_MS = 90000;
 // Lecturas: hasta 3 reintentos con 1-2 s de espera. Escrituras: ninguno a ciegas, para no duplicar un guardado.
 const REINTENTOS_LECTURA = 3;
 const pausaReintento = () => new Promise(r => setTimeout(r, 1000 + Math.random() * 1000));
 
 export class ErrorApi extends Error {
   // tipo: 'red' (no hay conexión), 'contrato' (respuesta que no cumple el contrato),
-  //       'backend' (el backend rechaza), 'bloqueado' (demasiados intentos), 'sesion' (hay que volver a entrar)
+  //       'backend' (el backend rechaza), 'bloqueado' (demasiados intentos), 'sesion' (hay que volver a entrar),
+  //       'permiso' (el usuario no tiene acceso al panel)
   constructor(mensaje, tipo) {
     super(mensaje);
     this.tipo = tipo;
   }
 }
 
-// ── Sesión ──────────────────────────────────────────────
-let testigoEnMemoria = null;
-function leerTestigo() {
-  try {
-    const t = JSON.parse(sessionStorage.getItem(CLAVE_TESTIGO) || 'null');
-    return t && t.token ? t : null;
-  } catch {
-    return null;
+// ── Sesión (Supabase Auth) ─────────────────────────────
+// La guarda y la renueva supabase-js. Va en sessionStorage, como el testigo de antes: dura lo que la pestaña.
+const CLAVE_SESION = 'bufala-panel-sesion';
+const memoria = new Map();
+const almacenSesion = {
+  getItem: k => { try { return sessionStorage.getItem(k); } catch { return memoria.get(k) ?? null; } },
+  setItem: (k, v) => { try { sessionStorage.setItem(k, v); } catch { memoria.set(k, v); } },
+  removeItem: k => { try { sessionStorage.removeItem(k); } catch { /* nada */ } memoria.delete(k); },
+};
+const haySesionGuardada = () => !!almacenSesion.getItem(CLAVE_SESION);
+
+let clienteSupabase = null;
+function supabase() {
+  if (!clienteSupabase) {
+    clienteSupabase = import(MODULO_SUPABASE)
+      .then(({ createClient }) => createClient(URL_SUPABASE, CLAVE_PUBLICA, {
+        auth: { storage: almacenSesion, storageKey: CLAVE_SESION, persistSession: true, autoRefreshToken: true, detectSessionInUrl: false },
+      }))
+      .catch(() => {
+        clienteSupabase = null;
+        throw new ErrorApi('No se ha podido cargar el acceso al panel. Comprueba la conexión y recarga la página.', 'red');
+      });
   }
+  return clienteSupabase;
 }
-function guardarTestigo(token, caduca) {
-  testigoEnMemoria = { token, caduca: caduca || null };
-  try { sessionStorage.setItem(CLAVE_TESTIGO, JSON.stringify(testigoEnMemoria)); } catch { /* sin almacenamiento: la sesión dura lo que la pestaña */ }
+async function sesionActual() {
+  if (!haySesionGuardada()) return null;   // sin sesión no hace falta ni cargar supabase-js
+  const { data } = await (await supabase()).auth.getSession();   // la renueva si ha caducado
+  return data?.session || null;
 }
-function testigoActual() {
-  const t = leerTestigo() || testigoEnMemoria;
-  if (!t) return null;
-  if (t.caduca && Date.parse(t.caduca) <= Date.now()) { cerrarSesion(); return null; }
-  return t.token;
+export async function haySesion() {
+  try { return !!(await sesionActual()); } catch { return false; }
 }
-export function haySesion() { return !!testigoActual(); }
-export function cerrarSesion() {
-  testigoEnMemoria = null;
-  try { sessionStorage.removeItem(CLAVE_TESTIGO); } catch { /* nada */ }
+export async function cerrarSesion() {
+  try { if (haySesionGuardada()) await (await supabase()).auth.signOut({ scope: 'local' }); } catch { /* nada */ }
+  almacenSesion.removeItem(CLAVE_SESION);
+  try { sessionStorage.removeItem('bufala-panel-testigo'); } catch { /* el testigo de Apps Script de antes */ }
 }
 
-// La aplicación registra aquí cómo pedir la contraseña. Devuelve una promesa
+// La aplicación registra aquí cómo pedir el acceso. Devuelve una promesa
 // que se resuelve cuando el usuario ha vuelto a entrar.
 let pedirAcceso = () => Promise.reject(new ErrorApi('Sesión caducada.', 'sesion'));
 export function alPedirAcceso(fn) { pedirAcceso = fn; }
@@ -83,6 +123,10 @@ function avisarConexion(ok, detalle) { oyentes.forEach(fn => fn(ok, detalle)); }
 const oyentesReintento = new Set(), oyentesCostesEnCola = new Set();
 export function alReintentar(fn) { oyentesReintento.add(fn); }
 export function alCostesEnCola(fn) { oyentesCostesEnCola.add(fn); }
+// De cuándo son los datos que se acaban de leer: { accion, actualizado } (ISO; null = al momento, por el puente)
+const oyentesFrescura = new Set();
+export function alLeerDatos(fn) { oyentesFrescura.add(fn); }
+const avisarFrescura = (accion, actualizado) => oyentesFrescura.forEach(fn => fn({ accion, actualizado }));
 
 // ── Transporte a producción ────────────────────────────
 function esSesionCaducada(r) {
@@ -90,34 +134,31 @@ function esSesionCaducada(r) {
   return c === 'sesion' || c === 'sesion_caducada' || r.sesionCaducada === true;
 }
 
-// Apps Script atiende una sola ejecución a la vez por usuario: las peticiones simultáneas se
-// encolan en Google y la última puede pasarse de tiempo (BACKEND.md v3.20.18). Por eso todas las
-// peticiones a producción pasan por esta cola y salen de una en una. La demostración no la usa.
-let colaProduccion = Promise.resolve();
-function enCola(tarea) {
-  const turno = colaProduccion.then(tarea, tarea);
-  colaProduccion = turno.catch(() => {});
-  return turno;
+// Apps Script atiende una sola ejecución a la vez: las peticiones simultáneas se encolan en Google y la
+// última puede pasarse de tiempo (BACKEND.md v3.20.18). Por eso lo que acaba en Apps Script sale de uno en uno:
+// una cola para el puente del panel y otra para lo que va directo (ping y Dirección), para que el ping, que va
+// por detrás, no retrase a la pantalla. Las lecturas de `vistas` no pasan por Apps Script y no hacen cola.
+function crearCola() {
+  let cola = Promise.resolve();
+  return tarea => {
+    const turno = cola.then(tarea, tarea);
+    cola = turno.catch(() => {});
+    return turno;
+  };
 }
+const enColaPuente = crearCola();
+const enColaDirecta = crearCola();
+const aAppsScript = (accion, opciones = {}) => enColaDirecta(() => conReintento(accion, opciones, enviarAProduccion));
 
-async function aProduccion(accion, opciones = {}) {
-  // La comprobación va fuera de la cola: consulta el ping, que también se encola.
-  if (accion !== 'ping' && !(await accionesEnProduccion()).has(accion)) {
-    throw new ErrorApi(`La acción «${accion}» no figura entre las implementadas en el backend.`, 'contrato');
-  }
-  return enCola(() => conReintento(accion, opciones));
-}
-
-// Un solo reintento, y solo para fallos de Google (página de error, sin respuesta o más de 30 s).
-// Un «no» del backend (ok:false) nunca se repite. La franja de conexión solo sale si falla el segundo.
-// Con el servidor ocupado, Google contesta a veces con su página de error (HTML, a veces un 404 de
-// script.googleusercontent.com) y el navegador lo ve como «Failed to fetch». Un «no» del backend (ok:false)
-// nunca se repite. La franja de conexión solo sale cuando ya no quedan intentos.
-async function conReintento(accion, opciones) {
+// Reintentos solo para fallos de Google o de red (sin respuesta, página de error, más de 30 s), y solo en
+// lecturas. Un «no» del backend (ok:false) nunca se repite. La franja de conexión solo sale cuando ya no
+// quedan intentos. Con el servidor ocupado, Google contesta a veces con su página de error (HTML, a veces un
+// 404 de script.googleusercontent.com) y el navegador lo ve como «Failed to fetch».
+async function conReintento(accion, opciones, enviar) {
   const lectura = (opciones.metodo || 'GET') === 'GET';
   for (let intento = 0; ; intento++) {
     try {
-      return await enviarAProduccion(accion, opciones);
+      return await enviar(accion, opciones);
     } catch (e) {
       if (!e.reintentable) throw e;
       if (lectura && intento < REINTENTOS_LECTURA) {
@@ -139,11 +180,56 @@ function escrituraSinRespuesta(e) {
   err.reintentable = false;
   return err;
 }
+function errorDeRed(e, ms) {
+  const err = new ErrorApi(
+    e.name === 'AbortError'
+      ? 'El servidor no ha respondido a tiempo, ni al reintentarlo. Lo que has escrito sigue en pantalla: vuelve a intentarlo en un minuto.'
+      : 'No se puede contactar con el servidor, ni al reintentarlo. Si tienes conexión, suele ser un fallo momentáneo: espera un minuto y vuelve a intentarlo. Lo que has escrito sigue en pantalla.',
+    'red');
+  err.reintentable = true;
+  err.tiempoAgotado = e.name === 'AbortError';
+  err.detalleConexion = e.name === 'AbortError' ? `El servidor tarda más de ${Math.round(ms / 1000)} s en responder.` : '';
+  return err;
+}
 
-async function enviarAProduccion(accion, { metodo = 'GET', params = {}, cuerpo = null, conTestigo = true, testigoExplicito = null } = {}) {
+// Lo que se comprueba en toda respuesta, venga de Apps Script, del puente o de `vistas`
+function validar(accion, datos, metodo) {
+  if (datos && datos.ok === false) {
+    const codigo = String(datos.codigo || '').toLowerCase();
+    if (esSesionCaducada(datos)) throw new ErrorApi(datos.error || 'La sesión ha caducado.', 'sesion');
+    if (codigo === 'permiso') throw new ErrorApi('Tu usuario no tiene acceso al panel.', 'permiso');
+    if (codigo === 'ocupado') {
+      // El puente ya ha reintentado las lecturas; los guardados no se repiten
+      const err = new ErrorApi('El servidor está ocupado, vuelve a intentarlo en unos segundos.', 'backend');
+      err.reintentable = false;
+      throw err;
+    }
+    if (datos.rechazado) throw new ErrorApi(datos.error || `El servidor no admite la acción «${accion}».`, 'contrato');
+    if (datos.bloqueado) throw new ErrorApi(datos.error || 'Demasiados intentos fallidos: el acceso está bloqueado temporalmente.', 'bloqueado');
+    throw new ErrorApi(datos.error || 'El servidor ha rechazado la operación sin indicar el motivo.', 'backend');
+  }
+  if (!datos || datos.ok !== true) throw new ErrorApi(`Respuesta inesperada del servidor en «${accion}».`, 'contrato');
+  // En las escrituras (salvo el acceso, que se valida por el testigo) el backend debe repetir la acción
+  if (metodo !== 'GET' && accion !== 'panelLogin' && accion !== 'direccionLogin' && datos.accion !== accion) {
+    throw new ErrorApi(`El servidor ha respondido a «${accion}» sin confirmarla. No se da por guardado.`, 'contrato');
+  }
+  // Los guardados contestan enseguida y dejan el recálculo de costes en cola (1-2 minutos)
+  if (datos.costesEnCola) oyentesCostesEnCola.forEach(fn => fn(accion));
+  return datos;
+}
+function respuestaNoJson(accion, texto, inicio) {
+  avisarConexion(true);
+  const segundos = Math.round((Date.now() - inicio) / 1000);
+  const err = new ErrorApi(`El servidor ha fallado al responder a «${accion}» (tras ${segundos} s)${motivoPaginaError(texto)}, también al reintentarlo. `
+    + 'No es un fallo del panel: hay que avisar al backend. Puedes volver a intentarlo.', 'backend');
+  err.reintentable = true;
+  return err;
+}
+
+// Directo a Apps Script: el ping y la página de la Dirección
+async function enviarAProduccion(accion, { metodo = 'GET', params = {}, cuerpo = null, testigoExplicito = null } = {}) {
   const url = new URL(URL_BACKEND);
-  // testigoExplicito: el de la Dirección, que no se mezcla con la sesión del panel
-  const token = testigoExplicito || (conTestigo ? testigoActual() : null);
+  const token = testigoExplicito;   // el de la Dirección; el panel ya no usa testigo de Apps Script
   const opciones = { method: metodo, redirect: 'follow' };
 
   if (metodo === 'GET') {
@@ -169,51 +255,106 @@ async function enviarAProduccion(accion, { metodo = 'GET', params = {}, cuerpo =
     texto = await resp.text();
   } catch (e) {
     // La página de error de Google no trae cabeceras CORS: el navegador la ve como fallo de red
-    const err = new ErrorApi(
-      e.name === 'AbortError'
-        ? 'El servidor no ha respondido a tiempo, ni al reintentarlo. Lo que has escrito sigue en pantalla: vuelve a intentarlo en un minuto.'
-        : 'No se puede contactar con el servidor, ni al reintentarlo. Si tienes conexión, suele ser un fallo momentáneo de Google: espera un minuto y vuelve a intentarlo. Lo que has escrito sigue en pantalla.',
-      'red');
-    err.reintentable = true;
-    err.tiempoAgotado = e.name === 'AbortError';
-    err.detalleConexion = e.name === 'AbortError' ? 'El servidor tarda demasiado en responder.' : '';
-    throw err;
+    throw errorDeRed(e, ESPERA_MAX_MS);
   } finally {
     clearTimeout(temporizador);
   }
 
   let datos;
+  try { datos = JSON.parse(texto); } catch { throw respuestaNoJson(accion, texto, inicio); }
+  avisarConexion(true);
+  return validar(accion, datos, metodo);
+}
+
+// Por el puente de Supabase (panel-puente): guardados y lecturas no publicadas. Devuelve la respuesta de Apps Script tal cual.
+async function enviarAlPuente(accion, { metodo = 'GET', params = {}, cuerpo = null } = {}) {
+  const sesion = await sesionActual();
+  if (!sesion) throw new ErrorApi('La sesión ha caducado.', 'sesion');
+  const control = new AbortController();
+  const temporizador = setTimeout(() => control.abort(), ESPERA_PUENTE_MS);
+  const inicio = Date.now();
+  let resp, texto;
   try {
-    datos = JSON.parse(texto);
-  } catch {
-    avisarConexion(true);
-    const segundos = Math.round((Date.now() - inicio) / 1000);
-    const err = new ErrorApi(`El servidor ha fallado al responder a «${accion}» (tras ${segundos} s)${motivoPaginaError(texto)}, también al reintentarlo. `
-      + 'No es un fallo del panel: hay que avisar al backend. Puedes volver a intentarlo.', 'backend');
-    err.reintentable = true;
+    resp = await fetch(`${URL_SUPABASE}/functions/v1/panel-puente`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', Authorization: 'Bearer ' + sesion.access_token, apikey: CLAVE_PUBLICA },
+      body: JSON.stringify(metodo === 'GET' ? { metodo, accion, params } : { metodo, accion, cuerpo: cuerpo ?? {} }),
+      signal: control.signal,
+    });
+    texto = await resp.text();
+  } catch (e) {
+    const err = errorDeRed(e, ESPERA_PUENTE_MS);
+    // El puente ya ha esperado a Google y reintentado: si se agota el tiempo, no se repite
+    if (err.tiempoAgotado) err.reintentable = metodo !== 'GET' ? true : false;
     throw err;
+  } finally {
+    clearTimeout(temporizador);
+  }
+  let datos;
+  try { datos = JSON.parse(texto); } catch {
+    if (resp.status === 401) throw new ErrorApi('La sesión ha caducado.', 'sesion');
+    throw respuestaNoJson(accion, texto, inicio);
   }
   avisarConexion(true);
+  if (resp.status === 401 && datos?.ok !== false) throw new ErrorApi('La sesión ha caducado.', 'sesion');
+  return validar(accion, datos, metodo);
+}
 
-  if (datos && datos.ok === false) {
-    if (esSesionCaducada(datos)) throw new ErrorApi(datos.error || 'La sesión ha caducado.', 'sesion');
-    if (datos.rechazado) throw new ErrorApi(datos.error || `El servidor no admite la acción «${accion}».`, 'contrato');
-    if (datos.bloqueado) throw new ErrorApi(datos.error || 'Demasiados intentos fallidos: el acceso está bloqueado temporalmente.', 'bloqueado');
-    throw new ErrorApi(datos.error || 'El servidor ha rechazado la operación sin indicar el motivo.', 'backend');
+// ── Lecturas publicadas en Supabase (tabla `vistas`) ───
+// `datos` es la respuesta exacta de doGet. Clave = acción y sus parámetros, como en BACKEND.md.
+function claveVista(accion, params = {}) {
+  switch (accion) {
+    case 'panelConfig': case 'panelPrecios': case 'panelParametrosUnidades': return accion;
+    case 'panelCompras': case 'panelLiquidacion': return params.mes ? `${accion}:${params.mes}` : null;
+    case 'panelCostes': case 'panelAusencias': return params.desde && params.hasta ? `${accion}:${params.desde}:${params.hasta}` : null;
+    case 'panelFestivos': return params.anio ? `${accion}:${params.anio}` : null;
+    default: return null;
   }
-  if (!datos || datos.ok !== true) throw new ErrorApi(`Respuesta inesperada del servidor en «${accion}».`, 'contrato');
-  // En las escrituras (salvo el acceso, que se valida por el testigo) el backend debe repetir la acción
-  if (metodo !== 'GET' && accion !== 'panelLogin' && accion !== 'direccionLogin' && datos.accion !== accion) {
-    throw new ErrorApi(`El servidor ha respondido a «${accion}» sin confirmarla. No se da por guardado.`, 'contrato');
+}
+// null si la fila no está (un mes antiguo, otro rango) o si Supabase falla: entonces se lee por el puente
+async function leerVista(clave) {
+  const sb = await supabase();
+  let r;
+  try { r = await sb.from('vistas').select('datos, actualizado').eq('clave', clave).maybeSingle(); } catch { return null; }
+  if (r.error) {
+    if (r.status === 401 || /jwt/i.test(r.error.message || '')) throw new ErrorApi('La sesión ha caducado.', 'sesion');
+    return null;
   }
-  // Los guardados contestan enseguida y dejan el recálculo de costes en cola (1-2 minutos)
-  if (datos.costesEnCola) oyentesCostesEnCola.forEach(fn => fn(accion));
+  return r.data && r.data.datos && r.data.datos.ok === true ? r.data : null;
+}
+
+// Tras un guardado, la pantalla afectada se lee por el puente durante 5 minutos: así se ve el cambio al
+// momento mientras el backend vuelve a publicar la vista (tarda 2-3 minutos, con el recálculo).
+const VENTANA_PUENTE_MS = 5 * 60 * 1000;
+const guardadoEn = new Map();   // lectura → hora del último guardado que la afecta
+const recienGuardada = accion => Date.now() - (guardadoEn.get(accion) || 0) < VENTANA_PUENTE_MS;
+
+async function aProduccion(accion, opciones = {}) {
+  if (!(await accionesEnProduccion()).has(accion)) {
+    throw new ErrorApi(`La acción «${accion}» no figura entre las implementadas en el backend.`, 'contrato');
+  }
+  const metodo = opciones.metodo || 'GET';
+  const inicio = performance.now();
+  const clave = metodo === 'GET' ? claveVista(accion, opciones.params) : null;
+  if (clave && !recienGuardada(accion)) {
+    const fila = await leerVista(clave);
+    if (fila) {
+      console.info(`[panel] ${clave} · vista · ${Math.round(performance.now() - inicio)} ms`);
+      avisarFrescura(accion, fila.actualizado || null);
+      return validar(accion, fila.datos, 'GET');
+    }
+  }
+  const datos = await enColaPuente(() => conReintento(accion, opciones, enviarAlPuente));
+  console.info(`[panel] ${accion} · puente · ${Math.round(performance.now() - inicio)} ms`);
+  if (metodo === 'GET') avisarFrescura(accion, null);
+  else if (LECTURA_DE[accion]) guardadoEn.set(LECTURA_DE[accion], Date.now());
   return datos;
 }
 
 // Cada escritura con la lectura de la que depende. Una escritura solo se permite si va por el
 // mismo camino que su lectura: así nunca se guarda en la demostración algo que se ha leído del
 // sistema real, ni se envía al sistema real algo que se ha leído de la demostración.
+// Es también el mapa de qué pantalla se lee por el puente tras un guardado.
 const LECTURA_DE = {
   panelGuardarConfig: 'panelConfig',
   panelAsignarCombustible: 'panelCompras',
@@ -248,30 +389,35 @@ async function peticion(accion, opciones = {}) {
   return enProduccion.has(accion) ? aProduccion(accion, opciones) : demostracion(accion, opciones);
 }
 
-// Si la sesión caduca, se pide la contraseña encima de la vista y se repite la llamada.
+// Si la sesión caduca, se pide el acceso encima de la vista y se repite la llamada.
 async function llamar(accion, opciones) {
-  if (!testigoActual()) await pedirAcceso('Introduce la contraseña del panel.');
+  if (!(await haySesion())) await pedirAcceso('Introduce tu correo y tu contraseña.');
   try {
     return await peticion(accion, opciones);
   } catch (e) {
     if (e.tipo !== 'sesion') throw e;
-    cerrarSesion();
+    await cerrarSesion();
     await pedirAcceso('La sesión ha caducado. Vuelve a entrar; no se ha perdido nada de lo que estabas haciendo.');
     return peticion(accion, opciones);
   }
 }
 
 // ── Acciones del contrato ──────────────────────────────
-export async function entrar(clave) {
-  // El acceso nunca se simula: si el backend no lo tiene, no se entra
-  if (!(await accionesEnProduccion()).has('panelLogin')) throw new ErrorApi('El servidor todavía no tiene activado el acceso al panel.', 'contrato');
-  const r = await aProduccion('panelLogin', { metodo: 'POST', cuerpo: { clave }, conTestigo: false });
-  if (!r.token) throw new ErrorApi('El servidor no ha devuelto el testigo de sesión.', 'contrato');
-  guardarTestigo(r.token, r.caduca);
-  return r;
+// Acceso con el usuario de Supabase (sustituye a panelLogin). Nunca se simula.
+export async function entrar(correo, clave) {
+  const sb = await supabase();
+  const { data, error } = await sb.auth.signInWithPassword({ email: String(correo || '').trim(), password: clave });
+  if (error) {
+    if (error.status === 400 || /invalid/i.test(error.message || '')) throw new ErrorApi('Correo o contraseña incorrectos.', 'backend');
+    if (error.status === 429) throw new ErrorApi('Demasiados intentos: espera unos minutos antes de volver a probar.', 'bloqueado');
+    throw new ErrorApi('No se ha podido comprobar el acceso. Comprueba la conexión y vuelve a intentarlo.', 'red');
+  }
+  if (!data?.session) throw new ErrorApi('El servidor no ha abierto la sesión.', 'contrato');
+  accionesEnProduccion();   // si no hay lista recordada, se pregunta ya, mientras se pinta la pantalla
+  return data;
 }
 
-// panelConfig tarda varios segundos: se guarda una copia en memoria (nunca en el navegador) y se
+// panelConfig: se guarda una copia en memoria (nunca en el navegador) y se
 // reutiliza al cambiar de pantalla. Solo se guardan lecturas correctas, así que «Reintentar» tras un
 // error vuelve a preguntar. La copia se olvida al guardar cambios y caduca a los 10 minutos.
 const VIDA_COPIA_CONFIG_MS = 10 * 60 * 1000;
@@ -327,7 +473,7 @@ export const guardarPrecios = cambios => llamar('panelGuardarPrecios', { metodo:
 export async function peticionDireccion(accion, { metodo = 'GET', params = {}, cuerpo = null, testigo = null } = {}) {
   if (!TODAS_DIRECCION.includes(accion)) throw new ErrorApi(`Acción desconocida: ${accion}`, 'contrato');
   if (!(await accionesEnProduccion()).has(accion)) throw new ErrorApi('Esta parte todavía no está activada en el servidor.', 'no-disponible');
-  return enCola(() => conReintento(accion, { metodo, params, cuerpo, conTestigo: false, testigoExplicito: testigo }));
+  return enColaDirecta(() => conReintento(accion, { metodo, params, cuerpo, testigoExplicito: testigo }, enviarAProduccion));
 }
 
 // Vista previa de una factura o línea (PDF en base64 o, si no hay, sus líneas)

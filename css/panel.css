@@ -476,3 +476,8 @@ tr.sin-casar .cal-tec { color: var(--error); }
 .tipo-cambio .opcion-tipo input { min-height: 0; width: 16px; height: 16px; accent-color: var(--acento); }
 .tipo-cambio .hasta-cambio { margin-left: 30px; max-width: 220px; }
 .lista-cambios { margin: .75rem 0 0; padding-left: 1.2rem; display: grid; gap: 4px; font-size: .9rem; }
+
+/* «Datos de hace X min» (encargo 9): discreto, abajo a la izquierda; los avisos van a la derecha */
+.frescura { position: fixed; left: 18px; bottom: 14px; z-index: 40; margin: 0; padding: 4px 10px; border-radius: 999px;
+  font-size: 12px; color: var(--tenue); background: var(--superficie); border: 1px solid var(--borde);
+  backdrop-filter: blur(8px); -webkit-backdrop-filter: blur(8px); pointer-events: auto; }

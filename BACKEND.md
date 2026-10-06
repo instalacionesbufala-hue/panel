@@ -59,6 +59,10 @@ const datos = await r.json();   // la misma respuesta que daba Apps Script
 
 **5 · Al terminar,** dejad en DECISIONES.md: tiempo de abrir el panel y de cambiar entre 3 pantallas, antes y después.
 
+**Respuestas a las dudas del encargo 9 (06/10/2026, tarde)**
+1. **Ping: publicado.** La fila `ping` de `vistas` trae la misma respuesta que `doGet ?action=ping` (Supabase.gs v1.1). Se publica con las demás: tras cada recálculo y cada hora de 7 a 22 h. Si no existiera aún, seguid como ahora.
+2. **Guardados con respuesta perdida: sí puede pasar, y el puente ya lo distingue** (panel-puente v1.1). Hemos visto ejecuciones de Apps Script que terminan bien mientras su respuesta se pierde (404 de `script.googleusercontent.com`), así que en un **guardado** el puente no puede saber si se aplicó. Cualquier fallo en un POST devuelve `{ ok:false, codigo:'ocupado', puedeHaberseGuardado:true, error:'Puede que se haya guardado: recarga antes de reintentar. (…)' }`. Con `puedeHaberseGuardado:true` usad ese mensaje; `codigo:'ocupado'` **sin** ese campo solo llega en lecturas (tras 3 intentos del puente).
+
 ## Cómo saber qué está disponible
 
 `GET ?action=ping` → `{ ok, version, ahora, dashGen, panel: true, accionesPanel: [ ... ] }`

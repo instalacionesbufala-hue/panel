@@ -1,6 +1,24 @@
 # Decisiones del panel y dudas para el backend
 
-**El contrato vive en [`BACKEND.md`](BACKEND.md)**, lo mantiene el backend y manda sobre este fichero. Aquí queda lo que decide el panel por su cuenta y lo que el panel pregunta. Revisado contra BACKEND.md (encargo 9, Supabase) el 06/10/2026.
+**El contrato vive en [`BACKEND.md`](BACKEND.md)**, lo mantiene el backend y manda sobre este fichero. Aquí queda lo que decide el panel por su cuenta y lo que el panel pregunta. Revisado contra BACKEND.md (encargos 10 y 11) el 07/10/2026.
+
+## Encargo 11 · «Borrar» en el historial de régimen — arreglado (07/10/2026)
+
+- **Causa:** la que describe BACKEND.md. El arreglo va en `preguntar` (`js/ui.js`), no solo en `regimen.js`, para que valga en cualquier diálogo que abra otro al responder: al enviarse el formulario se cancela el envío (`preventDefault`), se cierra el diálogo a mano con su `returnValue` y solo entonces se responde. El envío pendiente ya no puede cerrar el diálogo siguiente.
+- **De paso:**
+  - un `close` que llega atrasado con el diálogo ya reabierto no cuenta como respuesta del nuevo;
+  - si se abre un `preguntar` con otro sin responder, al anterior se le responde «cancelar» en el acto (antes podía quedarse esperando para siempre).
+- **Revisado:** no hay otros botones `type="submit"` con valor propio dentro de `#dialogo`. Los demás diálogos que vuelven a preguntar (técnicos, régimen al fallar, «Mover técnico» con error) usan el mismo `preguntar` y quedan cubiertos. El visor de facturas usa su propio diálogo.
+- **Probado en el simulador** (datos de demostración):
+  - Borrar → confirmación → «Borrar»: fila borrada, «Cambio de régimen borrado.»;
+  - Borrar → «Cancelar»: vuelve al régimen;
+  - «Mover técnico», cancelando y aceptando seguidos, sigue bien.
+
+## Encargo 10 · Recordar la sesión — hecho (07/10/2026)
+
+- La sesión de Supabase va en **localStorage** (`bufala-panel-sesion`): una pestaña nueva o el día siguiente entran sin contraseña mientras Supabase no la anule.
+- **«Cerrar sesión»** hace `sb.auth.signOut()` (sin `scope`, es decir, global: cierra también las otras sesiones del usuario) y borra la clave de localStorage. También borra los restos en sessionStorage de las versiones 29-30 y el testigo antiguo de Apps Script.
+- **Probado en el simulador:** sesión abierta en una pestaña → otra pestaña entra directa; «Cerrar sesión» → `logout`, clave borrada y pantalla de acceso.
 
 ## Encargo 9 · El panel lee de Supabase — hecho (06/10/2026)
 

@@ -59,9 +59,12 @@ export function avisar(mensaje, tipo = 'info', ms = 6000) {
 }
 
 // Diálogo de confirmación. cuerpoHtml puede incluir campos; devuelve el <form> o null si se cancela.
+let cancelarAnterior = null;
 export function preguntar(titulo, cuerpoHtml, { aceptar = 'Aceptar', cancelar = 'Cancelar', peligro = false } = {}) {
   const dlg = document.getElementById('dialogo');
-  if (dlg.open) { dlg.returnValue = ''; dlg.close(); }   // un diálogo anterior sin responder cuenta como cancelado
+  // Un diálogo anterior sin responder cuenta como cancelado, y se le responde ya (su 'close' llegaría con este abierto)
+  cancelarAnterior?.();
+  if (dlg.open) { dlg.returnValue = ''; dlg.close(); }
   dlg.querySelector('#dialogo-titulo').textContent = titulo;
   dlg.querySelector('#dialogo-cuerpo').innerHTML = cuerpoHtml;
   const si = dlg.querySelector('#dialogo-si');
@@ -72,17 +75,31 @@ export function preguntar(titulo, cuerpoHtml, { aceptar = 'Aceptar', cancelar = 
   return new Promise(resolver => {
     // Se responde en cuanto se envía el formulario; 'close' queda para Escape y para el cierre forzado.
     // (El evento 'close' puede retrasarse si la página no se está dibujando.)
+    // El envío se cancela y el diálogo se cierra aquí mismo, antes de responder: si quien llama abre otro
+    // `preguntar` al momento (p. ej. «Borrar» en el régimen → confirmación), el envío pendiente del primero
+    // ya no cierra el segundo (BACKEND.md, encargo 11). Un 'close' atrasado con el diálogo ya reabierto no cuenta.
     const form = dlg.querySelector('form');
     let respondido = false;
     const responder = acepta => {
       if (respondido) return;
       respondido = true;
       form.removeEventListener('submit', alEnviar);
+      dlg.removeEventListener('close', alCerrar);
+      if (cancelarAnterior === cancelarEste) cancelarAnterior = null;
       resolver(acepta ? form : null);
     };
-    const alEnviar = ev => responder(ev.submitter?.value === 'si');
+    const cancelarEste = () => responder(false);
+    cancelarAnterior = cancelarEste;
+    const alEnviar = ev => {
+      ev.preventDefault();
+      const valor = ev.submitter?.value || '';
+      dlg.returnValue = valor;
+      if (dlg.open) dlg.close(valor);
+      responder(valor === 'si');
+    };
+    const alCerrar = () => { if (!dlg.open) responder(dlg.returnValue === 'si'); };
     form.addEventListener('submit', alEnviar);
-    dlg.addEventListener('close', () => responder(dlg.returnValue === 'si'), { once: true });
+    dlg.addEventListener('close', alCerrar);
     dlg.showModal();
     const primero = dlg.querySelector('#dialogo-cuerpo input, #dialogo-cuerpo select');
     if (primero) primero.focus();

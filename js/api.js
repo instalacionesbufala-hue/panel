@@ -72,13 +72,14 @@ export class ErrorApi extends Error {
 }
 
 // ── Sesión (Supabase Auth) ─────────────────────────────
-// La guarda y la renueva supabase-js. Va en sessionStorage, como el testigo de antes: dura lo que la pestaña.
+// La guarda y la renueva supabase-js. Va en localStorage (encargo 10): se recuerda entre pestañas y días
+// hasta «Cerrar sesión» o hasta que Supabase la anule; entonces se vuelve a pedir el acceso.
 const CLAVE_SESION = 'bufala-panel-sesion';
 const memoria = new Map();
 const almacenSesion = {
-  getItem: k => { try { return sessionStorage.getItem(k); } catch { return memoria.get(k) ?? null; } },
-  setItem: (k, v) => { try { sessionStorage.setItem(k, v); } catch { memoria.set(k, v); } },
-  removeItem: k => { try { sessionStorage.removeItem(k); } catch { /* nada */ } memoria.delete(k); },
+  getItem: k => { try { return localStorage.getItem(k); } catch { return memoria.get(k) ?? null; } },
+  setItem: (k, v) => { try { localStorage.setItem(k, v); } catch { memoria.set(k, v); } },
+  removeItem: k => { try { localStorage.removeItem(k); } catch { /* nada */ } memoria.delete(k); },
 };
 const haySesionGuardada = () => !!almacenSesion.getItem(CLAVE_SESION);
 
@@ -105,9 +106,10 @@ export async function haySesion() {
   try { return !!(await sesionActual()); } catch { return false; }
 }
 export async function cerrarSesion() {
-  try { if (haySesionGuardada()) await (await supabase()).auth.signOut({ scope: 'local' }); } catch { /* nada */ }
+  try { if (haySesionGuardada()) await (await supabase()).auth.signOut(); } catch { /* nada */ }
   almacenSesion.removeItem(CLAVE_SESION);
-  try { sessionStorage.removeItem('bufala-panel-testigo'); } catch { /* el testigo de Apps Script de antes */ }
+  // Restos de antes: la sesión en sessionStorage (v29-30) y el testigo de Apps Script
+  try { sessionStorage.removeItem(CLAVE_SESION); sessionStorage.removeItem('bufala-panel-testigo'); } catch { /* nada */ }
 }
 
 // La aplicación registra aquí cómo pedir el acceso. Devuelve una promesa

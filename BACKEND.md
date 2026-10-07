@@ -63,6 +63,15 @@ const datos = await r.json();   // la misma respuesta que daba Apps Script
 1. **Ping: publicado.** La fila `ping` de `vistas` trae la misma respuesta que `doGet ?action=ping` (Supabase.gs v1.1). Se publica con las demás: tras cada recálculo y cada hora de 7 a 22 h. Si no existiera aún, seguid como ahora.
 2. **Guardados con respuesta perdida: sí puede pasar, y el puente ya lo distingue** (panel-puente v1.1). Hemos visto ejecuciones de Apps Script que terminan bien mientras su respuesta se pierde (404 de `script.googleusercontent.com`), así que en un **guardado** el puente no puede saber si se aplicó. Cualquier fallo en un POST devuelve `{ ok:false, codigo:'ocupado', puedeHaberseGuardado:true, error:'Puede que se haya guardado: recarga antes de reintentar. (…)' }`. Con `puedeHaberseGuardado:true` usad ese mensaje; `codigo:'ocupado'` **sin** ese campo solo llega en lecturas (tras 3 intentos del puente).
 
+### ENCARGO NUEVO 11 — «Borrar» en el historial de régimen no hace nada (07/10/2026 · fallo del panel, sin backend)
+**Síntoma (César):** en «Régimen de Búfala 2», al pulsar «Borrar» en una fila del historial se cierra todo y no se borra nada.
+**Causa (regimen.js + ui.js `preguntar`):** «Borrar» es `type="submit" value="borrar"` dentro del `<form method="dialog">`. Al pulsarlo, el `submit` resuelve `pendiente` con `null` y la continuación (`if (borrar) … preguntar('Borrar cambio de régimen', …)`) corre como microtarea **antes de que el navegador termine el envío**: `preguntar` reutiliza el mismo `#dialogo`, lo cierra y lo vuelve a abrir con la confirmación, y acto seguido el envío pendiente del primer formulario **cierra el diálogo con `returnValue = 'borrar'`** → el `close` de la confirmación responde «no» → no se borra.
+**Arreglo (cualquiera de los dos):**
+- en `alPulsar`: `ev.preventDefault()`, y cerrar a mano el diálogo (`dlg.returnValue = ''; dlg.close();`) tras anotar `borrar`; o
+- antes de la segunda `preguntar`, esperar a que el primer diálogo esté cerrado (`await new Promise(r => setTimeout(r, 0))` o esperar a su evento `close`).
+Mejor el primero, y revisad si otro botón de la app abre un segundo `preguntar` desde dentro de un diálogo con el mismo patrón.
+**Backend:** `panelGuardarParametroUnidad` con `{ unidad, desde, borrar: true }` ya funciona; no hace falta nada.
+
 ### ENCARGO NUEVO 10 — Recordar la sesión del panel (07/10/2026 · sin backend)
 César usa el panel a diario y no quiere escribir la contraseña en cada pestaña nueva.
 - La sesión de Supabase pasa de **sessionStorage a localStorage** (misma clave `bufala-panel-sesion`). supabase-js la renueva sola; si caduca o se anula, el panel ya vuelve a pedir el acceso.

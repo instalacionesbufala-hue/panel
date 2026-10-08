@@ -1,9 +1,9 @@
 // Página de la Dirección General (direccion.html): indicadores del puesto, solo lectura.
 // Acceso propio (rol «direccion»): su testigo se guarda aparte y solo sirve para las acciones direccion*.
 // Mientras el backend no las publique en el ping, se enseñan datos de ejemplo claramente marcados.
-import * as api from './api.js?v=31';
-import { ayuda, AYUDA, activarAyudas } from './ayudas.js?v=31';
-import { esc, fecha, avisar, cajaError, mesActual, sumarMeses } from './ui.js?v=31';
+import * as api from './api.js?v=32';
+import { ayuda, AYUDA, activarAyudas } from './ayudas.js?v=32';
+import { esc, fecha, avisar, cajaError, mesActual, sumarMeses } from './ui.js?v=32';
 
 const $ = s => document.querySelector(s);
 const CLAVE_TESTIGO = 'bufala-direccion-testigo';

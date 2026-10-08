@@ -1,6 +1,33 @@
 # Decisiones del panel y dudas para el backend
 
-**El contrato vive en [`BACKEND.md`](BACKEND.md)**, lo mantiene el backend y manda sobre este fichero. Aquí queda lo que decide el panel por su cuenta y lo que el panel pregunta. Revisado contra BACKEND.md (encargos 10 y 11) el 07/10/2026.
+**El contrato vive en [`BACKEND.md`](BACKEND.md)**, lo mantiene el backend y manda sobre este fichero. Aquí queda lo que decide el panel por su cuenta y lo que el panel pregunta. Revisado contra BACKEND.md (encargo 12) el 08/10/2026.
+
+## Encargo 12 · Importar el Excel de la gestoría tal cual — hecho (08/10/2026)
+
+- **Botón.** «Importar fichero» en Costes de personal: admite `.csv, .txt, .xls, .xlsx`. El CSV sigue igual que antes.
+- **SheetJS 0.20.3** (licencia Apache 2.0) va copiado en `js/vendor/`, junto a su licencia, y solo se carga al importar un Excel. No he usado la 0.18.5 de cdnjs/jsDelivr porque tiene fallos de seguridad conocidos al leer ficheros, ya corregidos en la 0.19.3 y la 0.20.2.
+- **Lectura** (`js/nominas.js`, sin DOM, probado también en Node):
+  - **Hoja y fila de importes:** hoja «Detalle»; el importe es la fila cuya columna A es exactamente `TOTAL` (sin espacios).
+  - **Fila de nombres:** el nombre son los tres trozos de la fila con «Total» en la columna B y las filas de arriba y abajo.
+  - **Corrección al encargo:** en el fichero de septiembre esas filas son la 8, 9 y 10 de Excel (índices 7-9), y la fecha de alta va en la 11, no en la 12. Por eso la fila se busca, no se fija por número.
+  - **Columnas repetidas:** las columnas con el mismo nombre completo se suman.
+  - **Mes del fichero:** sale de «Proceso: Septiembre del 2026».
+- **Emparejado:** tal cual el punto 3.
+  - Lo casa el apellido (última palabra del nombre del panel) presente entre los trozos de la gestoría, más un nombre compatible por prefijo en cualquier sentido.
+  - Si casa con dos técnicos, o un técnico casa con dos empleados, va a «sin casar».
+- **Resumen antes de guardar:** se muestra el fichero, cuántos empleados se han rellenado, el importe y «cuadra con la gestoría».
+  - Con ±0,02 € de diferencia o más entre la suma de las columnas y el «Total», sale un recuadro rojo.
+  - Si el fichero es de otro mes que el elegido, sale otro recuadro rojo.
+  - Cada empleado sin casar tiene un desplegable para elegir el técnico a mano; primero salen los candidatos.
+  - Nada se envía hasta pulsar «Guardar costes».
+- **Probado con el fichero de septiembre (solo en Node, en local):** 8 empleados, 21.513,38 €, cuadra.
+  - Con técnicos de prueba que siguen el estilo de nombres del panel («Miguel Á. Nogales», «J. Alberto Agudelo»…), sale exactamente E01 2.949,10 · E02 2.089,50 · E03 2.089,50 · E04 2.806,49 · E05 2.655,87 · E06 3.529,22 · E08 2.587,21 · E09 2.806,49 = 21.513,38 €.
+  - **No lo he probado con los nombres reales de producción**: si alguno no casa, aparecerá en «sin casar» con su desplegable.
+- **Probado en el navegador** con un Excel inventado (técnicos de la demo, sin datos reales):
+  - casado, dos contratos sumados, sin casar asignado a mano y guardado;
+  - avisos de «no cuadra» y de otro mes;
+  - error claro si falta la hoja «Detalle».
+- **Privacidad:** el fichero se lee en el navegador y no se guarda en ningún sitio. Solo se envían los importes, al pulsar «Guardar costes», como antes.
 
 ## Encargo 11 · «Borrar» en el historial de régimen — arreglado (07/10/2026)
 

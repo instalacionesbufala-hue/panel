@@ -1,7 +1,25 @@
 // Pantalla de costes de personal: volcar el coste de empresa que entrega la gestoría.
-import * as api from './api.js?v=31';
-import { ayuda, AYUDA } from './ayudas.js?v=31';
-import { esc, mesActual, sumarMeses, nombreMes, vigenteEnMes, leerImporte, importeEditable, avisar, cajaError, selectorMes } from './ui.js?v=31';
+import * as api from './api.js?v=32';
+import { ayuda, AYUDA } from './ayudas.js?v=32';
+import { esc, eur, mesActual, sumarMeses, nombreMes, vigenteEnMes, leerImporte, importeEditable, avisar, cajaError, selectorMes } from './ui.js?v=32';
+import { leerResumenGestoria, emparejar } from './nominas.js?v=32';
+
+// SheetJS (Apache 2.0) va copiado en el repositorio y solo se carga al importar un Excel
+const RUTA_SHEETJS = 'js/vendor/xlsx-0.20.3.full.min.js';
+let cargaSheetJS = null;
+function sheetJS() {
+  if (window.XLSX) return Promise.resolve(window.XLSX);
+  if (!cargaSheetJS) {
+    cargaSheetJS = new Promise((ok, mal) => {
+      const s = document.createElement('script');
+      s.src = RUTA_SHEETJS;
+      s.onload = () => (window.XLSX ? ok(window.XLSX) : mal(new Error('No se ha podido cargar el lector de Excel.')));
+      s.onerror = () => { cargaSheetJS = null; s.remove(); mal(new Error('No se ha podido cargar el lector de Excel. Comprueba la conexión y vuelve a intentarlo.')); };
+      document.head.append(s);
+    });
+  }
+  return cargaSheetJS;
+}
 
 // origen: 'gestoria' (nómina), 'manual' (corregido a mano) o 'estimacion' (coste de referencia, solo lectura)
 const ORIGENES_REALES = ['gestoria', 'manual'];
@@ -117,6 +135,57 @@ export function montar(el) {
     pintar();
   }
 
+  // Excel de la gestoría (encargo 12): hoja «Detalle», coste de empresa = fila «TOTAL», columnas del mismo empleado sumadas
+  async function importarExcel(fichero) {
+    const XLSX = await sheetJS();
+    const libro = XLSX.read(await fichero.arrayBuffer(), { type: 'array' });
+    const hoja = libro.SheetNames.find(n => n.trim().toLowerCase() === 'detalle');
+    if (!hoja) throw new Error('El fichero no tiene la hoja «Detalle». ¿Es el «Resumen de nómina contable y de costes» de la gestoría?');
+    const r = leerResumenGestoria(XLSX.utils.sheet_to_json(libro.Sheets[hoja], { header: 1, raw: true, defval: null }));
+    const { casados, sinCasar } = emparejar(r.empleados, tecnicosDelMes());
+    for (const { tecnico, empleado } of casados) {
+      filas.set(tecnico.id, { ...filas.get(tecnico.id), texto: importeEditable(empleado.importe), estado: 'editado' });
+    }
+    informeCsv = {
+      gestoria: true, fichero: fichero.name, periodo: r.periodo, total: r.total, sumaColumnas: r.sumaColumnas, cuadra: r.cuadra,
+      leidas: casados.length, importe: casados.reduce((s, c) => s + c.empleado.importe, 0),
+      sinCasar: sinCasar.map(s => ({ ...s, asignado: '' })),
+    };
+    pintar();
+  }
+  async function importarFichero(fichero) {
+    try {
+      if (/\.xlsx?$/i.test(fichero.name)) await importarExcel(fichero);
+      else importarCsv(await fichero.text());
+    } catch (e) {
+      avisar(`No se ha podido leer «${fichero.name}»: ${e.message || e}`, 'error', 15000);
+    }
+  }
+  // Empleado de la gestoría sin casar → técnico elegido a mano
+  function asignarSinCasar(i, idTec) {
+    const s = informeCsv?.sinCasar?.[i];
+    if (!s) return;
+    if (s.asignado && s.asignado !== idTec) filas.set(s.asignado, { ...filas.get(s.asignado), texto: '', estado: 'editado' });
+    s.asignado = idTec;
+    if (idTec) filas.set(idTec, { ...filas.get(idTec), texto: importeEditable(s.empleado.importe), estado: 'editado' });
+    pintar();
+  }
+  function informeGestoria(inf) {
+    const otroMes = inf.periodo && inf.periodo !== mes;
+    const tecs = tecnicosDelMes();
+    return `<div class="${inf.cuadra && !otroMes && !inf.sinCasar.length ? 'tarjeta bloque' : 'caja-aviso'} informe-gestoria">
+        <strong>${esc(inf.fichero)}:</strong> ${inf.leidas} empleado${inf.leidas === 1 ? '' : 's'} rellenado${inf.leidas === 1 ? '' : 's'} · ${esc(eur(inf.importe))}
+        ${inf.cuadra ? '<span class="insignia ok">cuadra con la gestoría</span>' : ''}. Revisa y pulsa «Guardar costes».
+        ${inf.cuadra ? '' : `<p class="caja-error">La suma de las columnas (${esc(eur(inf.sumaColumnas))}) no cuadra con el «Total» de la gestoría (${esc(eur(inf.total))}). Revisa el fichero antes de guardar.</p>`}
+        ${otroMes ? `<p class="caja-error">El fichero es de <strong>${esc(nombreMes(inf.periodo))}</strong> y estás en <strong>${esc(nombreMes(mes))}</strong>. Cambia el mes antes de guardar.</p>` : ''}
+        ${inf.sinCasar.length ? `<p>Sin casar (${esc(eur(inf.sinCasar.reduce((s, x) => s + x.empleado.importe, 0)))}): elige a quién corresponde cada uno.</p>
+          <ul class="sin-casar">${inf.sinCasar.map((s, i) => `<li><span><strong>${esc(s.empleado.nombre)}</strong> · ${esc(eur(s.empleado.importe))}${s.empleado.columnas > 1 ? ` <span class="tenue">(${s.empleado.columnas} contratos sumados)</span>` : ''}${s.candidatos.length > 1 ? ' <span class="tenue">· casa con varios técnicos</span>' : ''}</span>
+            <select data-sin-casar="${i}" aria-label="Técnico de ${esc(s.empleado.nombre)}"><option value="">— Sin asignar —</option>
+              ${[...s.candidatos, ...tecs.filter(t => !s.candidatos.includes(t))].map(t => `<option value="${esc(t.id)}" ${s.asignado === t.id ? 'selected' : ''}>${esc(t.nombre)} (${esc(t.id)})</option>`).join('')}
+            </select></li>`).join('')}</ul>` : ''}
+      </div>`;
+  }
+
   function pintar(cargando = false) {
     const cabecera = `<div class="barra">
         <div><h1>Costes de personal</h1><p class="tenue">Coste de empresa del mes por técnico: bruto + Seguridad Social + prorrata de pagas. Se rellena con el cierre de la gestoría.</p></div>
@@ -135,13 +204,13 @@ export function montar(el) {
       <div class="meses" id="historico" aria-label="Estado de los meses"></div>
       ${errorCarga ? cajaError(errorCarga, 'No se ha podido actualizar') : ''}
       ${errorGuardado ? cajaError(errorGuardado, 'El servidor no ha aceptado los costes') : ''}
-      ${informeCsv ? `<div class="${informeCsv.sinCasar.length ? 'caja-aviso' : 'tarjeta bloque'}">
+      ${informeCsv?.gestoria ? informeGestoria(informeCsv) : informeCsv ? `<div class="${informeCsv.sinCasar.length ? 'caja-aviso' : 'tarjeta bloque'}">
           CSV: ${informeCsv.leidas} técnico${informeCsv.leidas === 1 ? '' : 's'} rellenado${informeCsv.leidas === 1 ? '' : 's'}. Revisa y pulsa «Guardar costes».
           ${informeCsv.sinCasar.length ? `<br>Líneas que no corresponden a ningún técnico activo del mes:<ul>${informeCsv.sinCasar.map(l => `<li><code>${esc(l)}</code></li>`).join('')}</ul>` : ''}
         </div>` : ''}
       <div class="barra" style="align-items:center">
-        <label class="boton secundario" style="display:inline-flex;align-items:center;color:var(--texto)">Importar CSV (opcional)
-          <input type="file" id="csv" accept=".csv,.txt,text/csv" hidden></label>
+        <label class="boton secundario" style="display:inline-flex;align-items:center;color:var(--texto)" title="El Excel de la gestoría (.xls o .xlsx) tal cual llega, o un CSV">Importar fichero
+          <input type="file" id="csv" accept=".csv,.txt,.xls,.xlsx,text/csv,application/vnd.ms-excel,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet" hidden></label>
         ${sugeridas ? `<button class="boton secundario" data-accion="aceptar-todas">Dar por buenas las ${sugeridas} sugerencias</button>` : ''}
         <span class="empuje"></span>
         <label class="en-linea">Guardar como
@@ -198,7 +267,11 @@ export function montar(el) {
     } else if (t.id === 'origen') {
       origen = t.value;
     } else if (t.id === 'csv' && t.files[0]) {
-      importarCsv(await t.files[0].text());
+      const fichero = t.files[0];
+      t.value = '';   // así se puede volver a elegir el mismo fichero
+      await importarFichero(fichero);
+    } else if (t.dataset.sinCasar !== undefined) {
+      asignarSinCasar(Number(t.dataset.sinCasar), t.value);
     }
   }
   function alPulsar(ev) {

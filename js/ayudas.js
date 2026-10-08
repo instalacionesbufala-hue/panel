@@ -1,6 +1,6 @@
 // Iconos de ayuda «i» (BACKEND.md, encargo 7): una o dos líneas, sin jerga, con qué mide cada cosa y cómo se calcula.
 // La ventana flotante es una sola, con posición fija sobre la ventana: así no la recortan los contenedores con scroll.
-import { esc } from './ui.js?v=31';
+import { esc } from './ui.js?v=32';
 
 // Textos. Los marcados como obligatorios vienen tal cual del encargo del backend.
 export const AYUDA = {

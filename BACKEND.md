@@ -63,6 +63,23 @@ const datos = await r.json();   // la misma respuesta que daba Apps Script
 1. **Ping: publicado.** La fila `ping` de `vistas` trae la misma respuesta que `doGet ?action=ping` (Supabase.gs v1.1). Se publica con las demás: tras cada recálculo y cada hora de 7 a 22 h. Si no existiera aún, seguid como ahora.
 2. **Guardados con respuesta perdida: sí puede pasar, y el puente ya lo distingue** (panel-puente v1.1). Hemos visto ejecuciones de Apps Script que terminan bien mientras su respuesta se pierde (404 de `script.googleusercontent.com`), así que en un **guardado** el puente no puede saber si se aplicó. Cualquier fallo en un POST devuelve `{ ok:false, codigo:'ocupado', puedeHaberseGuardado:true, error:'Puede que se haya guardado: recarga antes de reintentar. (…)' }`. Con `puedeHaberseGuardado:true` usad ese mensaje; `codigo:'ocupado'` **sin** ese campo solo llega en lecturas (tras 3 intentos del puente).
 
+### ENCARGO NUEVO 12 — Costes de personal: importar el Excel de la gestoría tal cual (07/10/2026 · sin backend)
+**Por qué.** La gestoría manda cada mes el «Resumen de nómina contable y de costes» en **.xls** (Excel 97, a veces .xlsx). El panel solo admite CSV y César tiene que pedir que se lo conviertan. Septiembre se cargó con un CSV preparado a mano.
+**Estructura del fichero** (hoja «Detalle»; la hoja «Totales» se ignora):
+- Filas 9, 10 y 11 (índices 8-10): nombre del empleado **en tres trozos por columna**, en mayúsculas y **truncados a 10 caracteres** (`IVAN` / `SAUCEDO` / `JULIA`; `JAIRO ALBE` / `AGUDELO` / `MONSALVE`; `MIGUEL ANG` / `NOGALES` / `RAMIREZ`).
+- Fila 12 (índice 11): fecha de alta del contrato de esa columna.
+- Columna B = «Total» de la empresa; desde la columna C, **una columna por contrato**.
+- Fila con la etiqueta **`TOTAL`** en la columna A (no «TOTAL DEVENGOS» ni «TOTAL LIQUIDO» ni «TOTAL COSTE S.S.»): **coste empresa** de cada columna = devengos + Seguridad Social de empresa. **Es el importe que se guarda**, el mismo criterio que julio, agosto y septiembre.
+- **Un empleado puede tener dos columnas** en el mismo mes (cambio de contrato: en septiembre, Miguel Á. Nogales y César Gamarra, altas 01/05 y 09/09). **Se suman.**
+
+**Qué hacer**
+1. El botón «Importar CSV» pasa a «Importar fichero» y acepta `.csv, .txt, .xls, .xlsx`. Para .xls/.xlsx: SheetJS (script UMD de jsDelivr o cdnjs, ya permitido) → hoja «Detalle».
+2. Por columna: nombre = trozos de las filas 9-11 unidos; importe = la fila `TOTAL`. Sumar las columnas del mismo empleado.
+3. **Emparejar con los técnicos del mes** (`tecnicosDelMes()`), sin acentos y en minúsculas: lo casa **el apellido** (último trozo del nombre del panel, p. ej. «nogales», «agudelo») presente entre los trozos de la gestoría **y** el nombre compatible por prefijo en cualquier sentido (la gestoría trunca: «ALBE» ↔ «Alberto»; el panel abrevia: «J. Alberto»). Si casan dos o ninguno → a «sin casar» para que César elija a mano, nunca adivinar.
+4. Comprobación: la suma de lo importado debe coincidir con la columna «Total» de la fila `TOTAL` (±0,02 €). Si no, aviso visible antes de guardar.
+5. Resumen antes de guardar, como el del CSV actual: «8 empleados rellenados · 21.513,38 € (cuadra con la gestoría)» y la lista de columnas sin casar.
+6. Comprobad con el fichero de septiembre: E01 2.949,10 · E02 2.089,50 · E03 2.089,50 · E04 2.806,49 · E05 2.655,87 · E06 3.529,22 · E08 2.587,21 · E09 2.806,49 = 21.513,38 €. César os lo pasa (`BUFALA_TECH_GASTO_PERSONAL_SEPTIEMBRE.xls`).
+
 ### ENCARGO NUEVO 11 — «Borrar» en el historial de régimen no hace nada (07/10/2026 · fallo del panel, sin backend)
 **Síntoma (César):** en «Régimen de Búfala 2», al pulsar «Borrar» en una fila del historial se cierra todo y no se borra nada.
 **Causa (regimen.js + ui.js `preguntar`):** «Borrar» es `type="submit" value="borrar"` dentro del `<form method="dialog">`. Al pulsarlo, el `submit` resuelve `pendiente` con `null` y la continuación (`if (borrar) … preguntar('Borrar cambio de régimen', …)`) corre como microtarea **antes de que el navegador termine el envío**: `preguntar` reutiliza el mismo `#dialogo`, lo cierra y lo vuelve a abrir con la confirmación, y acto seguido el envío pendiente del primer formulario **cierra el diálogo con `returnValue = 'borrar'`** → el `close` de la confirmación responde «no» → no se borra.

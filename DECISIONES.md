@@ -2,6 +2,46 @@
 
 **El contrato vive en [`BACKEND.md`](BACKEND.md)**, lo mantiene el backend y manda sobre este fichero. Aquí queda lo que decide el panel por su cuenta y lo que el panel pregunta. Revisado contra BACKEND.md (encargo 12) el 08/10/2026.
 
+## Web bufalatech.es · para estudiar (no afecta al panel) — 09/10/2026
+
+César pide que el backend lo lea y lo estudie antes de decidir. Es del repo de la web (`jbarranco92-dot/bufala-web`), no del panel. **No se ha tocado nada de esto todavía.**
+
+### 1. LCP en móvil por encima de 2,5 s
+
+Medido con Lighthouse 12 (móvil simulado, tres pasadas por página) sobre la build local de la rama `feat/puntos-de-recarga` (PR #5, en borrador):
+
+| Página | LCP |
+|---|---|
+| Home (rama) | 5,4 s |
+| `/puntos-de-recarga` | 5,0–5,1 s |
+| Home en producción, como referencia | 5,0 s |
+
+El problema ya estaba en producción antes de la rama.
+
+**Causa principal: el logo.**
+- `public/bufalo-cobre.png` mide 2500×2500 px y pesa 423 KB.
+- Lo usan la cabecera (`HeaderCliente.jsx`) y el pie (`Footer.jsx`), donde se muestra a unos 40 px. También es la imagen al compartir y el logo de los datos estructurados (`app/lib/seo.js`).
+- Se descarga en todas las páginas, con prioridad alta.
+- Medición bloqueando ese archivo: home de 5,4 a **3,2 s**; recarga de 5,1 a **3,1 s**.
+
+**Otras causas:**
+- **Home:** el elemento LCP es la foto del hero en móvil (`hero-mobile.webp`), que carga en modo diferido (`loading="lazy"`). Solo la foto de escritorio tiene prioridad.
+- **Recarga:** el elemento LCP es el póster `recarga-comunitario-v-inicio.webp` (19 KB), que llega rápido. Sin logo y sin vídeo, la página da 2,9 s, así que el vídeo de 3,4 MB, que se descarga enseguida, también compite.
+
+**Propuesta, por orden:**
+1. **Logo:** una versión pequeña en WebP (unos 160 px y menos de 10 KB) para la cabecera y el pie. El PNG grande se queda para la imagen al compartir y el logo de los datos estructurados. Ahorra unos 2 s en todas las páginas.
+2. **Hero de la home:** dar prioridad a la foto de móvil y servir las dos fotos con `<picture>`, para que cada dispositivo descargue solo la suya.
+3. **Recarga:** retrasar la descarga del vídeo hasta que termine de cargar la página (evento `load`). El póster se ve igual mientras tanto.
+4. **Fuentes:** solo si con lo anterior no se baja de 2,5 s, revisar las tres fuentes que se precargan (124 KB).
+
+Plan propuesto: hacer 1 y 2, volver a medir y hacer el 3 solo si hace falta.
+
+### 2. Otras decisiones pendientes del PR #5
+
+- **Meta descripción de `/servicios`:** el título ya dice «Cinco formas de cuidar tu casa», pero la descripción para Google (`meta.servicios.description`, en ES y EN) sigue diciendo «Cuatro formas…» y no menciona la recarga. ¿Se actualiza?
+- **Pasos de la portada de recarga:** se han hecho al pie de la letra. Con eso, arriba del todo todavía no se ve el paso 01, que aparece al empezar a bajar. Al final de la sección, el 06 ya se ha desvanecido. Alternativa: que el 01 esté visible desde el principio y el 06 se quede al final. Es un cambio pequeño.
+- **Título en inglés de la quinta tarjeta:** no venía en el encargo; se ha puesto «EV charging points».
+
 ## Encargo 12 · Importar el Excel de la gestoría tal cual — hecho (08/10/2026)
 
 - **Botón.** «Importar fichero» en Costes de personal: admite `.csv, .txt, .xls, .xlsx`. El CSV sigue igual que antes.

@@ -1,0 +1,57 @@
+<!doctype html>
+<html lang="es">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="robots" content="noindex, nofollow">
+  <title>Indicadores de Operaciones · Búfala Tech</title>
+  <link rel="icon" type="image/png" href="img/favicon.png">
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Manrope:wght@400;500;600;700;800&family=Sora:wght@400;500;600&family=JetBrains+Mono:wght@500;700&display=swap">
+  <link rel="stylesheet" href="css/panel.css?v=35">
+  <script type="module" src="js/direccion.js?v=35"></script>
+</head>
+<body class="pagina-direccion">
+  <!-- Página de la Dirección General: solo lectura, con su propio acceso. No enlaza con el panel. -->
+  <header class="cabecera">
+    <div class="marca"><img src="img/logo.png" alt="" width="40" height="40">Búfala Tech <span>· Indicadores de Operaciones</span></div>
+    <span class="empuje-cabecera"></span>
+    <button type="button" class="boton secundario" id="salir" hidden>Cerrar sesión</button>
+  </header>
+
+  <div id="franja-demo" class="franja-demo" role="note" hidden></div>
+  <div id="franja" class="franja" role="status" hidden></div>
+
+  <main id="vista" class="vista" tabindex="-1">
+    <p class="cargando">Cargando…</p>
+  </main>
+
+  <div id="avisos" class="avisos" aria-live="polite"></div>
+
+  <div id="acceso" class="acceso" hidden>
+    <form id="form-acceso" class="tarjeta acceso-caja" autocomplete="off">
+      <img class="acceso-logo" src="img/logo.png" alt="Búfala Tech" width="96" height="96">
+      <h1>Dirección General</h1>
+      <p id="acceso-motivo" class="tenue">Introduce la contraseña de la Dirección.</p>
+      <label>Contraseña
+        <input type="password" id="clave" required autocomplete="current-password">
+      </label>
+      <p id="acceso-error" class="error" hidden></p>
+      <button type="submit" class="boton">Entrar</button>
+    </form>
+  </div>
+
+  <!-- ui.js lo necesita para las confirmaciones; aquí no se usa para escribir nada -->
+  <dialog id="dialogo" class="dialogo">
+    <form method="dialog">
+      <h2 id="dialogo-titulo"></h2>
+      <div id="dialogo-cuerpo"></div>
+      <div class="acciones">
+        <button value="no" class="boton secundario" id="dialogo-no">Cancelar</button>
+        <button value="si" class="boton" id="dialogo-si">Aceptar</button>
+      </div>
+    </form>
+  </dialog>
+</body>
+</html>
